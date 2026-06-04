@@ -1,7 +1,7 @@
 # schedule-briefer 설계 문서
 
 **날짜:** 2026-06-05  
-**상태:** 확정
+**상태:** 확정 (pre-mortem 반영 업데이트)
 
 ---
 
@@ -23,9 +23,9 @@ my-ai-agents/.claude/agents/schedule-briefer.md
 
 | 소스 | 방법 | 상세 |
 |------|------|------|
-| Apple Calendar | `icalBuddy` CLI | 오늘 + 내일 일정 |
+| Apple Calendar | `icalBuddy` 절대 경로 | 오늘 + 내일 일정. `/opt/homebrew/bin/icalBuddy` 절대 경로 사용 (non-interactive shell PATH 문제 방지) |
 | Notion 할 일 | Notion MCP | 페이지 ID `002a894f-a829-83e9-b954-014816e6fa18`, 미완료 항목 |
-| Gmail | Gmail MCP | 미읽음·중요 메일 |
+| Gmail | Gmail MCP | `is:unread newer_than:1d` 쿼리 명시. Gmail "중요" 레이블 의존 금지 |
 | Slack | Slack MCP | 미읽음 메시지 |
 | CSE 학과 공지 | WebFetch | `https://cse.knu.ac.kr/index.php` 커뮤니티 섹션 |
 | 소프트웨어교육원 공지 | WebFetch | `https://swedu.knu.ac.kr/05_sub/01_sub.html` |
@@ -41,7 +41,9 @@ my-ai-agents/.claude/agents/schedule-briefer.md
 - 미커밋 변경 여부 (`git status --short`)
 - `NOTES.md` 최근 날짜 항목
 
-조건: `git log --since="30 days ago"`로 커밋이 있는 레포만 포함.
+조건: `git log --since="30 days ago"`로 커밋이 있는 레포만 포함. 최대 10개 상한.
+
+`~/src/repos/` 직접 glob 사용. 설정 파일 없이 해당 디렉토리 전체 스캔.
 
 ---
 
@@ -88,7 +90,20 @@ my-ai-agents/.claude/agents/schedule-briefer.md
 | 매일 아침 자동 (`/schedule` 등록) | Slack DM |
 | "브리핑해줘" 수동 호출 | 터미널 출력 |
 
-자동/수동 구분: 에이전트 호출 시 args에 `--slack` 포함되면 Slack 전송, 없으면 터미널 출력. `/schedule` 자동 실행 시 `--slack` args 포함.
+자동/수동 구분: 에이전트 호출 시 args에 `--slack` 포함되면 Slack 전송, 없으면 터미널 출력.
+
+**자동 실행 주의:** `/schedule`이 원격 실행인 경우 로컬 파일·icalBuddy 접근 불가. 로컬 실행인 경우 Claude Code 세션 활성 상태 필요 (노트북 잠자기 시 스킵). 구현 시 실제 동작 방식 검증 후 결정.
+
+---
+
+## 에러 핸들링 원칙 (pre-mortem 반영)
+
+각 소스는 개별적으로 격리 실행. 하나 실패해도 나머지는 계속 진행.
+
+- 실패 시 해당 섹션에 `⚠️ [소스명] 데이터 수집 실패` 명시
+- Notion 응답이 빈 배열이면 `⚠️ 할 일 0건 (Notion 직접 확인 권장)` 경고
+- WebFetch HTTP 비정상 응답 시 "공지 없음" 대신 `⚠️ [사이트명] 접근 불가` 출력
+- Slack 전송 후 응답 검증. 실패 시 터미널에 경고 출력
 
 ---
 
