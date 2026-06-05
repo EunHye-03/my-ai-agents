@@ -17,12 +17,6 @@
 ## 🏗️ Structure
 
 - `.claude/agents/`
-  - service-architect: 서비스 설계
-  - code-debugger: 코드 디버깅
-  - writing-polisher: 글쓰기/퇴고
-
-- `.claude/skills/`
-  - api-design
-  - db-design
-  - c-debug-checklist
-  - korean-polishing
+  - `blog-writer` — PAAR 구조 기술 블로그 작성 → Tistory 포스팅 + GitHub + Obsidian 저장
+  - `weekly-report` — 연구실 주간보고서 작성 → 로컬 저장 + Notion 페이지 생성
+  - `schedule-briefer` — 일간 브리핑 (캘린더, 할 일, 이메일, Slack, 학교 공지, 프로젝트 현황) *(in progress)*
