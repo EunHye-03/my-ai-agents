@@ -71,3 +71,30 @@ Notion MCP로 할 일 페이지를 조회한다.
 **에러 처리:**
 - MCP 호출 실패 시: NOTION_TASKS = 에러 상태로 기록. 브리핑 조립 시 `⚠️ Notion 데이터 수집 실패` 출력
 - 응답은 왔으나 미완료 항목이 0건이면: NOTION_TASKS = {status: "empty"} 로 기록. 브리핑 조립 시 `✅ 오늘 할 일\n- (없음)` 출력
+
+---
+
+## 4단계: Gmail 수집
+
+Gmail MCP로 오늘 미읽음 메일을 조회한다.
+
+`search_threads` 툴을 사용. 쿼리: `is:unread newer_than:1d`
+
+**주의:** `label:important` 쿼리는 사용하지 않는다. Gmail의 "중요" 레이블은 ML 기반으로 신뢰할 수 없다.
+
+결과를 GMAIL_DATA 변수로 기억한다:
+- unread_count: 미읽음 건수
+- threads: [{from: "발신자", subject: "제목"}] (최대 5건)
+- status: "ok" / "error" / "empty"
+
+**에러 처리:**
+- MCP 호출 실패 시: GMAIL_DATA = {status: "error"} 로 기록. 브리핑 조립 시 `⚠️ Gmail 데이터 수집 실패` 출력
+- 결과가 없으면: GMAIL_DATA = {status: "empty"}. 브리핑 조립 시 `📬 이메일\n- (미읽음 없음)` 출력
+
+성공 시 포맷:
+```
+📬 이메일 (미읽음 N건)
+- 발신자: 제목 요약
+- 발신자: 제목 요약
+```
+(최대 5건 표시. 5건 초과 시 마지막에 "외 N건" 추가)
