@@ -19,4 +19,6 @@
 - `.claude/agents/`
   - `blog-writer` — PAAR 구조 기술 블로그 작성 → Tistory 포스팅 + GitHub + Obsidian 저장
   - `weekly-report` — 연구실 주간보고서 작성 → 로컬 저장 + Notion 페이지 생성
-  - `schedule-briefer` — 일간 브리핑 (캘린더, 할 일, 이메일, Slack, 학교 공지, 프로젝트 현황) *(in progress)*
+  - `schedule-briefer` — 일간 브리핑 (캘린더, Notion 할 일, Gmail, Slack, 학교 공지, 프로젝트 현황, AI 컨텍스트)
+    - 호출: "브리핑해줘" 또는 `/schedule-briefer`
+    - Slack 전송: `--slack` 인자 추가
