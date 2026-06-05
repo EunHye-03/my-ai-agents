@@ -17,6 +17,9 @@
 ## 🏗️ Structure
 
 - `.claude/agents/`
+  - **schedule-briefer**: 일간 브리핑 (캘린더, Notion 할 일, Gmail, Slack, 학교 공지, 프로젝트 현황, AI 컨텍스트)
+    - 호출: "브리핑해줘" 또는 `/schedule-briefer`
+    - Slack 전송: `--slack` 인자 추가
   - service-architect: 서비스 설계
   - code-debugger: 코드 디버깅
   - writing-polisher: 글쓰기/퇴고
