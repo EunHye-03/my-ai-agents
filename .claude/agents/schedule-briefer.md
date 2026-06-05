@@ -209,3 +209,32 @@ done | head -10
   최근 커밋: 커밋 요약 (N개)
   미커밋: 있음 / 없음
   NOTES: 최근 항목 요약
+
+---
+
+## 8단계: AI 컨텍스트 수집
+
+`~/.claude/projects/` 하위에서 최근 수정된 `MEMORY.md` 파일을 최대 3개 읽는다.
+
+```bash
+ls -t ~/.claude/projects/*/memory/MEMORY.md 2>/dev/null | head -3
+```
+
+각 파일을 Read 툴로 읽어 핵심 항목을 요약한다. 요약 기준:
+- 현재 진행 중인 프로젝트나 작업
+- 최근 중요한 결정 또는 피드백
+- 다음 할 일로 이어지는 컨텍스트
+
+수집 결과를 AI_CONTEXT 변수로 기억한다:
+- summaries: ["요약 항목 1", "요약 항목 2", ...]
+- status: "ok" / "error" / "empty"
+
+**에러 처리:**
+- 파일이 없으면: AI_CONTEXT = {status: "empty"}. 브리핑 조립 시 `🤖 AI 컨텍스트\n- (메모리 파일 없음)` 출력
+- 파일 읽기 실패 시: AI_CONTEXT = {status: "error"}. 브리핑 조립 시 `⚠️ AI 컨텍스트 수집 실패` 출력
+
+성공 시 포맷:
+
+🤖 AI 컨텍스트
+- 요약 항목 1
+- 요약 항목 2
