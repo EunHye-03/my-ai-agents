@@ -122,3 +122,44 @@ Slack MCP로 미읽음 메시지를 조회한다.
 - @DM발신자: 메시지 요약
 ```
 (최대 5건 표시. 초과 시 "외 N건" 추가)
+
+---
+
+## 6단계: 학교 공지 수집
+
+세 URL을 각각 독립적으로 WebFetch로 수집한다. 하나 실패해도 나머지는 계속 진행한다.
+
+### CSE 학과 공지
+URL: `https://cse.knu.ac.kr/index.php`
+커뮤니티 섹션의 최신 공지 5건을 추출한다.
+- HTTP 비정상 응답 또는 에러 페이지이면: `[CSE] ⚠️ 사이트 접근 불가`
+- 파싱 실패(공지 목록을 찾을 수 없음)이면: `[CSE] ⚠️ 공지 파싱 실패`
+
+### 소프트웨어교육원 공지
+URL: `https://swedu.knu.ac.kr/05_sub/01_sub.html`
+최신 공지 3건을 추출한다.
+- 실패 시: `[SW교육원] ⚠️ 사이트 접근 불가`
+
+### 경북대 국제처 공지
+URL: `https://international.knu.ac.kr/HOME/global/index.htm`
+최신 공지 3건을 추출한다.
+- 실패 시: `[국제처] ⚠️ 사이트 접근 불가`
+
+수집 결과를 KNU_NOTICES 변수로 기억한다:
+- cse: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 5건)
+- swedu: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 3건)
+- international: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 3건)
+
+마감일 추출: 공지 제목에서 날짜 패턴(`MM/DD`, `MM월 DD일`, `YYYY-MM-DD`) 발견 시 deadline에 저장. 이 데이터는 9단계 "이번 주 놓치면 안 되는 것" 섹션에서 사용된다.
+
+성공 시 포맷:
+
+🏫 학교 공지
+- [CSE] 공지 제목
+- [SW교육원] 공지 제목
+- [국제처] 공지 제목
+
+세 소스 모두 실패 시:
+
+🏫 학교 공지
+⚠️ 학교 사이트 전체 접근 불가 (네트워크 또는 URL 변경 확인)
