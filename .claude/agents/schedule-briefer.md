@@ -138,12 +138,14 @@ URL: `https://cse.knu.ac.kr/index.php`
 ### 소프트웨어교육원 공지
 URL: `https://swedu.knu.ac.kr/05_sub/01_sub.html`
 최신 공지 3건을 추출한다.
-- 실패 시: `[SW교육원] ⚠️ 사이트 접근 불가`
+- HTTP 비정상 응답 또는 에러 페이지이면: `[SW교육원] ⚠️ 사이트 접근 불가`
+- 파싱 실패(공지 목록을 찾을 수 없음)이면: `[SW교육원] ⚠️ 공지 파싱 실패`
 
 ### 경북대 국제처 공지
 URL: `https://international.knu.ac.kr/HOME/global/index.htm`
 최신 공지 3건을 추출한다.
-- 실패 시: `[국제처] ⚠️ 사이트 접근 불가`
+- HTTP 비정상 응답 또는 에러 페이지이면: `[국제처] ⚠️ 사이트 접근 불가`
+- 파싱 실패(공지 목록을 찾을 수 없음)이면: `[국제처] ⚠️ 공지 파싱 실패`
 
 수집 결과를 KNU_NOTICES 변수로 기억한다:
 - cse: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 5건)
@@ -155,9 +157,13 @@ URL: `https://international.knu.ac.kr/HOME/global/index.htm`
 성공 시 포맷:
 
 🏫 학교 공지
-- [CSE] 공지 제목
-- [SW교육원] 공지 제목
-- [국제처] 공지 제목
+- [CSE] 공지 제목 1
+- [CSE] 공지 제목 2
+- [SW교육원] 공지 제목 1
+- [SW교육원] 공지 제목 2
+- [국제처] 공지 제목 1
+
+(CSE 최대 5건, SW교육원·국제처 각 최대 3건을 소스 태그와 함께 나열)
 
 세 소스 모두 실패 시:
 
