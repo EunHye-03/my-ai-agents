@@ -169,3 +169,43 @@ URL: `https://international.knu.ac.kr/HOME/global/index.htm`
 
 🏫 학교 공지
 ⚠️ 학교 사이트 전체 접근 불가 (네트워크 또는 URL 변경 확인)
+
+---
+
+## 7단계: 프로젝트 현황 수집
+
+`~/src/repos/` 하위 디렉토리 중 최근 30일 내 커밋이 있는 레포만 수집한다. 최대 10개 상한.
+
+```bash
+for dir in ~/src/repos/*/; do
+  if [ -d "$dir/.git" ]; then
+    count=$(git -C "$dir" log --since="30 days ago" --oneline 2>/dev/null | wc -l)
+    if [ "$count" -gt 0 ]; then
+      echo "$dir"
+    fi
+  fi
+done | head -10
+```
+
+각 레포에서 수집:
+1. 현재 브랜치: `git -C <path> branch --show-current`
+2. 최근 커밋 5개: `git -C <path> log --oneline -5`
+3. 미커밋 변경: `git -C <path> status --short` (출력이 있으면 "있음", 없으면 "없음")
+4. NOTES.md: `<path>/NOTES.md` 파일이 있으면 마지막 `## YYYY-MM-DD` 섹션의 첫 1-2줄 읽기
+
+수집 결과를 PROJECT_STATUS 변수로 기억한다:
+- repos: [{name: "레포명", branch: "브랜치명", recent_commits: ["커밋 메시지"], has_uncommitted: true/false, notes_snippet: "최근 NOTES 요약 또는 null"}]
+- status: "ok" / "error"
+
+**에러 처리:**
+- git 명령 실패 시 해당 레포는 건너뛴다
+- NOTES.md 없으면 notes_snippet = null
+- 활성 레포가 없으면: `💻 프로젝트 현황\n- (최근 30일 내 활동 없음)` 출력
+
+성공 시 포맷:
+
+💻 프로젝트 현황
+- [레포명] branch: 브랜치명
+  최근 커밋: 커밋 요약 (N개)
+  미커밋: 있음 / 없음
+  NOTES: 최근 항목 요약
