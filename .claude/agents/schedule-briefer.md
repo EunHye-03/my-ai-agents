@@ -98,3 +98,27 @@ Gmail MCP로 오늘 미읽음 메일을 조회한다.
 - 발신자: 제목 요약
 ```
 (최대 5건 표시. 5건 초과 시 마지막에 "외 N건" 추가)
+
+---
+
+## 5단계: Slack 수집
+
+Slack MCP로 미읽음 메시지를 조회한다.
+
+`slack_search_public_and_private` 툴을 사용. 쿼리: `is:unread`
+
+결과를 SLACK_DATA 변수로 기억한다:
+- channels: [{name: "#채널명 또는 @DM발신자", summary: "메시지 요약"}] (최대 5건)
+- status: "ok" / "error" / "empty"
+
+**에러 처리:**
+- MCP 호출 실패 시: SLACK_DATA = {status: "error"}. 브리핑 조립 시 `⚠️ Slack 데이터 수집 실패` 출력
+- 결과가 없으면: SLACK_DATA = {status: "empty"}. 브리핑 조립 시 `💬 Slack\n- (미읽음 없음)` 출력
+
+성공 시 포맷:
+```
+💬 Slack
+- #채널명: 메시지 요약
+- @DM발신자: 메시지 요약
+```
+(최대 5건 표시. 초과 시 "외 N건" 추가)
