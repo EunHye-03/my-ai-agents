@@ -28,15 +28,69 @@ date '+%Y-%m-%d (%a)'
 
 ## 2단계: Apple Calendar 수집
 
-icalBuddy를 절대 경로로 실행한다. PATH 문제를 방지하기 위해 반드시 절대 경로 사용.
+AppleScript로 오늘/내일 일정을 가져온다. `icalBuddy`는 TCC 권한 문제로 사용하지 않음.
 
 ```bash
-/opt/homebrew/bin/icalBuddy -n -b "•" -df "%H:%M" eventsToday+1
+osascript << 'APPLESCRIPT'
+tell application "Calendar"
+    set today to current date
+    set startOfDay to today
+    set hours of startOfDay to 0
+    set minutes of startOfDay to 0
+    set seconds of startOfDay to 0
+    set endOfDay to today
+    set hours of endOfDay to 23
+    set minutes of endOfDay to 59
+    set seconds of endOfDay to 59
+
+    set tomorrow to today + (24 * 60 * 60)
+    set startOfTomorrow to tomorrow
+    set hours of startOfTomorrow to 0
+    set minutes of startOfTomorrow to 0
+    set seconds of startOfTomorrow to 0
+    set endOfTomorrow to tomorrow
+    set hours of endOfTomorrow to 23
+    set minutes of endOfTomorrow to 59
+    set seconds of endOfTomorrow to 59
+
+    set skipCals to {"생일", "대한민국의 휴일", "Holidays in South Korea", "대한민국 공휴일", "Siri 제안", "예정된 미리 알림"}
+    set output to ""
+    repeat with cal in calendars
+        set calName to name of cal
+        set skip to false
+        repeat with sc in skipCals
+            if calName is sc then set skip to true
+        end repeat
+        if not skip then
+            try
+                set todayEvents to (every event of cal whose start date >= startOfDay and start date <= endOfDay)
+                repeat with ev in todayEvents
+                    set evStart to start date of ev
+                    set hh to hours of evStart
+                    set mm to minutes of evStart
+                    set output to output & "[오늘] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & " " & summary of ev & "
+"
+                end repeat
+                set tomorrowEvents to (every event of cal whose start date >= startOfTomorrow and start date <= endOfTomorrow)
+                repeat with ev in tomorrowEvents
+                    set evStart to start date of ev
+                    set hh to hours of evStart
+                    set mm to minutes of evStart
+                    set output to output & "[내일] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & " " & summary of ev & "
+"
+                end repeat
+            end try
+        end if
+    end repeat
+    if output is "" then return "(일정 없음)"
+    return output
+end tell
+APPLESCRIPT
 ```
 
-- 출력이 비어있으면: `📅 일정\n- (없음)` 으로 기록
-- 명령 실패(파일 없음, 권한 오류 등)이면: `📅 일정\n⚠️ icalBuddy 실행 실패 (Calendar 권한 확인 필요)` 로 기록
-- 성공 시 오늘/내일 일정을 `📅 일정` 섹션으로 포맷
+- 출력이 `(일정 없음)` 이면: `📅 일정\n_일정 없음_` 으로 기록
+- osascript 실패(Calendar 앱 없음, 권한 거부 등)이면: `📅 일정\n⚠️ Calendar 접근 실패` 로 기록
+- 성공 시 `[오늘] HH:MM 일정명` / `[내일] HH:MM 일정명` 형식으로 포맷
 
 ---
 
@@ -52,19 +106,38 @@ NOTION_TOKEN=$(security find-generic-password -a "$USER" -s "notion-personal-tok
 
 토큰 읽기 실패 시 (`NOTION_TOKEN`이 비어있으면): NOTION_TASKS = {status: "error"} 로 기록 후 다음 단계로 진행.
 
-**2. Notion API 호출:**
+**2. Notion API 호출 및 파싱:**
+
+Weekly To-Do 페이지는 **요일별 column 구조**로 되어 있다. 아래 순서로 수집한다.
 
 ```bash
-curl -s "https://api.notion.com/v1/blocks/002a894f-a829-83e9-b954-014816e6fa18/children?page_size=100" \
+# Step 1: 페이지 최상위 블록 가져오기
+curl -s "https://api.notion.com/v1/blocks/002a894f-a829-83e9-b954-014816e6fa18/children?page_size=50" \
   -H "Authorization: Bearer $NOTION_TOKEN" \
-  -H "Notion-Version: 2022-06-28" \
-  -H "Content-Type: application/json"
+  -H "Notion-Version: 2022-06-28"
+```
+
+응답에서 첫 번째 `heading_2` 블록 = 가장 최근 주차. 그 다음 나오는 `column_list` 블록 ID를 찾는다.
+
+```bash
+# Step 2: column_list 하위 column ID 목록 가져오기
+curl -s "https://api.notion.com/v1/blocks/{column_list_id}/children" \
+  -H "Authorization: Bearer $NOTION_TOKEN" \
+  -H "Notion-Version: 2022-06-28"
+```
+
+```bash
+# Step 3: 각 column 하위 to_do 블록 가져오기 (column마다 반복)
+curl -s "https://api.notion.com/v1/blocks/{column_id}/children" \
+  -H "Authorization: Bearer $NOTION_TOKEN" \
+  -H "Notion-Version: 2022-06-28"
 ```
 
 **3. 미완료 항목 추출:**
 
-응답 JSON에서 `type: "to_do"`이고 `to_do.checked: false`인 블록을 추출한다.
+각 column에서 `heading_3` (요일명: Monday~Sunday) 과 `type: "to_do"`이고 `to_do.checked: false`인 블록을 추출한다.
 각 블록의 텍스트는 `to_do.rich_text[].plain_text`를 이어붙인 값이다.
+오늘 요일에 해당하는 column의 미완료 항목을 먼저, 나머지 요일은 그 다음에 수집한다.
 
 **우선순위 분류 (이모지 기반):**
 - ‼️ 포함 항목 → P0 (지금 해야 함)
