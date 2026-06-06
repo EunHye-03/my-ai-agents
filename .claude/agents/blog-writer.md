@@ -160,7 +160,7 @@ API 키 없으면 프롬프트-only 폴백, 사용자에게 알림.
 
 ── 발행 대상 ──
 • Tistory: mgs10204.tistory.com
-• GitHub:  {EunHye-03/dev-notes/Projects/{slug}.md  또는  "없음 (Devlog 외 카테고리)"}
+• GitHub:  {Je-hye/dev-notes/Projects/{slug}.md  또는  "없음 (Devlog 외 카테고리)"}
 • Obsidian: 항상 저장
 
 이대로 발행할까요? (수정 원하면 말해줘)
@@ -246,12 +246,12 @@ print(post())
 
 대상: Devlog 카테고리만 (CS, Paper Review, Retrospective는 업로드 안 함)
 
-- 레포: `EunHye-03/dev-notes`
+- 레포: `Je-hye/dev-notes`
 - 경로: `Projects/{project-slug}.md`
 - 기존 파일 있으면 append, 없으면 새 파일 생성
 - `gh` CLI 사용:
 ```bash
-gh api repos/EunHye-03/dev-notes/contents/Projects/{slug}.md \
+gh api repos/Je-hye/dev-notes/contents/Projects/{slug}.md \
   -X PUT \
   -f message="docs: add blog post - {제목}" \
   -f content="{base64 인코딩된 내용}"

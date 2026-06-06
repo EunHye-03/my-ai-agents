@@ -21,7 +21,7 @@ docs/superpowers/
   pre-mortem/      # pre-mortem 리포트 및 프로세스 로그
 ```
 
-Skills are managed separately in `~/.agents/skills/` (see [my-agents](https://github.com/EunHye-03/my-agents)).
+Skills are managed separately in `~/.agents/skills/` (see [my-agents](https://github.com/Je-hye/my-agents)).
 
 ## Agent Format
 
