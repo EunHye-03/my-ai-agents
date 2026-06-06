@@ -42,15 +42,29 @@ icalBuddy를 절대 경로로 실행한다. PATH 문제를 방지하기 위해 �
 
 ## 3단계: Notion 할 일 수집
 
-Notion MCP로 할 일 페이지를 조회한다.
+Notion 개인 통합 API로 할 일 페이지를 조회한다. (MCP 아닌 직접 API 호출)
 
-페이지 ID: `002a894f-a829-83e9-b954-014816e6fa18` (Weekly To-Do 페이지)
+**1. Keychain에서 토큰 읽기:**
 
-`notion-fetch` 툴로 해당 페이지를 가져온다.
+```bash
+NOTION_TOKEN=$(security find-generic-password -a "$USER" -s "notion-personal-token" -w 2>/dev/null)
+```
 
-응답에서 미완료 할 일 항목을 추출한다:
-- JSON 블록 형식인 경우: `type: "to_do"`이고 `checked: false`인 블록의 텍스트
-- 마크다운 형식인 경우: `- [ ]` 로 시작하는 줄의 텍스트
+토큰 읽기 실패 시 (`NOTION_TOKEN`이 비어있으면): NOTION_TASKS = {status: "error"} 로 기록 후 다음 단계로 진행.
+
+**2. Notion API 호출:**
+
+```bash
+curl -s "https://api.notion.com/v1/blocks/002a894f-a829-83e9-b954-014816e6fa18/children?page_size=100" \
+  -H "Authorization: Bearer $NOTION_TOKEN" \
+  -H "Notion-Version: 2022-06-28" \
+  -H "Content-Type: application/json"
+```
+
+**3. 미완료 항목 추출:**
+
+응답 JSON에서 `type: "to_do"`이고 `to_do.checked: false`인 블록을 추출한다.
+각 블록의 텍스트는 `to_do.rich_text[].plain_text`를 이어붙인 값이다.
 
 **우선순위 분류 (이모지 기반):**
 - ‼️ 포함 항목 → P0 (지금 해야 함)
@@ -69,8 +83,8 @@ Notion MCP로 할 일 페이지를 조회한다.
 이 데이터는 9단계(위험도 계산, "지금 가장 중요한 한 가지", "이번 주 놓치면 안 되는 것")에서 사용된다.
 
 **에러 처리:**
-- MCP 호출 실패 시: NOTION_TASKS = 에러 상태로 기록. 브리핑 조립 시 `⚠️ Notion 데이터 수집 실패` 출력
-- 응답은 왔으나 미완료 항목이 0건이면: NOTION_TASKS = {status: "empty"} 로 기록. 브리핑 조립 시 `✅ 오늘 할 일\n- (없음)` 출력
+- curl 실패 또는 API 오류 응답 시: NOTION_TASKS = {status: "error"}. 브리핑 조립 시 `⚠️ Notion 데이터 수집 실패` 출력
+- 미완료 항목이 0건이면: NOTION_TASKS = {status: "empty"}. 브리핑 조립 시 _할 일 없음_ 출력
 
 ---
 
