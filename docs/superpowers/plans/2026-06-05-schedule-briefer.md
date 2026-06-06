@@ -105,7 +105,7 @@ git commit -m "feat: add schedule-briefer agent with calendar section"
 
 ---
 
-## Task 2: Notion 할 일 섹션
+## Task 2: Notion 할 일 섹션 (P0/P1/P2 + 마감 추출)
 
 **Files:**
 - Modify: `.claude/agents/schedule-briefer.md`
@@ -125,9 +125,21 @@ Notion MCP로 할 일 페이지를 조회한다.
 
 `notion-fetch` 툴로 해당 페이지를 가져온 뒤 미완료(체크박스 unchecked) 항목을 추출한다.
 
-- MCP 호출 실패 시: `✅ 오늘 할 일\n⚠️ Notion 데이터 수집 실패`
-- 응답은 왔으나 미완료 항목이 0건이면: `✅ 오늘 할 일\n⚠️ 할 일 0건 (Notion 직접 확인 권장)`
-- 미완료 항목이 있으면: 각 항목을 `- [ ] 항목명` 형식으로 나열
+**우선순위 분류 (이모지 기반):**
+- ‼️ 포함 항목 → P0
+- ❗️ 포함 항목 → P1
+- ❕ 포함 항목 → P2
+- 이모지 없는 항목 → P1 (기본값)
+
+**마감 추출:** 항목명에 `(MM/DD)`, `(YYYY-MM-DD)`, `~MM/DD` 형태가 있으면 마감일로 추출.
+
+수집 결과를 NOTION_TASKS 변수로 저장:
+- P0 목록, P1 목록, P2 목록 (각각 항목명 + 마감일)
+- 이 데이터는 위험도 계산과 "지금 가장 중요한 한 가지" 섹션에 사용됨
+
+- MCP 호출 실패 시: NOTION_TASKS = 에러 상태로 기록
+- 응답은 왔으나 미완료 항목이 0건이면: NOTION_TASKS = 0건 상태로 기록 (경고 출력)
+- 성공 시: P0/P1/P2로 분류된 항목 목록
 ```
 
 - [ ] **Step 2: 에이전트 호출해서 Notion 섹션 확인**
@@ -137,7 +149,7 @@ Notion MCP로 할 일 페이지를 조회한다.
 ```
 
 Expected:
-- Notion에 미완료 항목이 있으면 `✅ 오늘 할 일` 아래 목록 출력
+- Notion에 미완료 항목이 있으면 P0/P1/P2로 분류돼 출력됨
 - 항목이 없으면 `⚠️ 할 일 0건 (Notion 직접 확인 권장)` 출력
 - MCP 연결 불가 시 `⚠️ Notion 데이터 수집 실패` 출력
 
@@ -145,7 +157,7 @@ Expected:
 
 ```bash
 git add .claude/agents/schedule-briefer.md
-git commit -m "feat: add Notion todos section to schedule-briefer"
+git commit -m "feat: add Notion todos section with P0/P1/P2 priority to schedule-briefer"
 ```
 
 ---
@@ -452,27 +464,78 @@ git commit -m "feat: add AI context section to schedule-briefer"
 **Files:**
 - Modify: `.claude/agents/schedule-briefer.md`
 
-- [ ] **Step 1: 브리핑 조립 + 출력 라우팅 섹션 추가**
+- [ ] **Step 1: 위험도 계산 + 브리핑 조립 + 출력 라우팅 섹션 추가**
 
 AI 컨텍스트 섹션 다음에 추가:
 
 ```markdown
 ---
 
-## 9단계: 브리핑 조립 및 출력
+## 9단계: 위험도 계산 및 브리핑 조립
 
-위에서 수집한 모든 섹션을 아래 순서로 조립한다:
+### 위험도 계산
+
+NOTION_TASKS에서 다음 기준으로 위험도를 판정한다:
+- 🔴 HIGH: P0 항목이 있고 마감이 오늘이거나 지난 경우; 또는 마감일 없는 P0 항목이 2개 이상
+- 🟡 MED: P0 항목이 있고 마감이 내일 이후; 또는 P1 항목 중 마감이 오늘인 경우
+- 🟢 LOW: P0 없고 긴급 마감 없음
+
+### 공휴일 확인
+
+오늘 날짜를 대한민국 법정 공휴일 목록과 비교한다. 공휴일이면 HOLIDAY_NAME에 공휴일명을 저장.
+
+### 지금 가장 중요한 한 가지
+
+NOTION_TASKS에서 다음 우선순위로 선택:
+1. P0 항목 중 마감이 가장 가까운 것
+2. P0가 없으면 P1 중 마감이 가장 가까운 것
+3. 마감 정보 없으면 P0 중 첫 번째 항목
+
+### 이번 주 놓치면 안 되는 것
+
+오늘~7일 이내 마감인 항목을 수집:
+- NOTION_TASKS 중 마감일이 오늘~7일 이내인 것
+- KNU 공지 중 마감 언급이 있는 것
+
+### 추천 행동 생성
+
+수집한 전체 데이터 기반으로 2-3개 행동 생성:
+- Gmail 미읽음이 많으면: "미읽음 이메일 N건 — 빠른 확인 필요"
+- P0 마감이 오늘이면: "P0 마감 항목 오전 중 처리 권장"
+- 미커밋 변경이 있는 레포가 있으면: "미커밋 변경 있음 — 커밋 권장"
+- 학교 공지에 마감 언급이 있으면: "학교 공지 마감 확인 필요"
+
+### 브리핑 조립
+
+아래 순서로 조립:
 
 ```
 🗓️ {TODAY} 브리핑
+{HOLIDAY_NAME이 있으면: 🎌 오늘은 {HOLIDAY_NAME}입니다}
+
+{위험도} 현재 위험도: HIGH/MED/LOW
+{위험도 이유 한 줄}
+
+🎯 지금 가장 중요한 한 가지
+- {작업명} (예상 Xh | 마감까지 D일 / 오늘 마감)
 
 ✅ 오늘 할 일
-{Notion 섹션}
+**P0 — 지금 해야 함**
+{P0 항목 목록 또는 없으면 생략}
+
+**P1 — 오늘 안에**
+{P1 항목 목록}
+
+**P2 — 여유 있으면**
+{P2 항목 목록 또는 없으면 생략}
+
+👀 이번 주 놓치면 안 되는 것
+{이번 주 마감 항목}
 
 📅 일정
 {Calendar 섹션}
 
-📬 이메일
+📬 이메일 (미읽음 N건)
 {Gmail 섹션}
 
 💬 Slack
@@ -486,12 +549,15 @@ AI 컨텍스트 섹션 다음에 추가:
 
 🤖 AI 컨텍스트
 {Memory 섹션}
+
+💡 추천 행동
+{추천 행동 목록}
 ```
 
 ### 출력 라우팅
 
 args에 `--slack` 이 포함되어 있으면:
-- `slack_send_message` 툴로 나 자신의 DM (채널: `@나` 또는 `@EunHye`)에 전송
+- `slack_send_message` 툴로 나 자신의 DM에 전송
 - 전송 후 응답의 `ok` 필드를 확인한다
   - `ok: true` 이면: "✅ Slack 브리핑 전송 완료"를 터미널에 출력
   - `ok: false` 또는 오류 시: "⚠️ Slack 전송 실패 — 브리핑을 터미널에 출력합니다" 출력 후 브리핑을 터미널에 출력
@@ -506,7 +572,7 @@ args에 `--slack` 이 없으면:
 /schedule-briefer
 ```
 
-Expected: 모든 섹션이 포함된 완전한 브리핑이 터미널에 출력됨. 각 섹션이 순서대로 나타남.
+Expected: 위험도, 가장 중요한 한 가지, P0/P1/P2 할 일, 이번 주 체크 항목, 일정, 이메일, Slack, 학교 공지, 프로젝트 현황, AI 컨텍스트, 추천 행동이 순서대로 출력됨.
 
 - [ ] **Step 3: Slack 전송 테스트**
 
@@ -518,13 +584,11 @@ Expected:
 - Slack DM에 브리핑 도착
 - 터미널에 "✅ Slack 브리핑 전송 완료" 출력
 
-Slack DM을 확인해 내용이 완전한지 검증.
-
 - [ ] **Step 4: 커밋**
 
 ```bash
 git add .claude/agents/schedule-briefer.md
-git commit -m "feat: add briefing assembly and output routing to schedule-briefer"
+git commit -m "feat: add briefing assembly with risk level and priority to schedule-briefer"
 ```
 
 ---
