@@ -11,9 +11,10 @@ Personal collection of Claude Code agents designed to automate repetitive tasks 
 ```
 .claude/
   agents/          # Subagent definitions for Claude Code
-    blog-writer    # PAAR 구조 기술 블로그 → Tistory + GitHub + Obsidian
-    weekly-report  # 연구실 주간보고서 → 로컬 + Notion
-    schedule-briefer  # 일간 브리핑 (캘린더, Notion, Gmail, Slack, 학교 공지)
+    blog-writer      # PAAR 구조 기술 블로그 → Tistory + GitHub + Obsidian
+    weekly-report    # 연구실 주간보고서 → 로컬 + Notion
+    schedule-briefer # 일간 브리핑 (캘린더, Notion, Gmail, Slack, 학교 공지)
+    project-notes    # 개발 마일스톤 기록 → ~/Notes/Projects/<ProjectName>/
 docs/superpowers/
   specs/           # 설계 문서
   plans/           # 구현 플랜
