@@ -4,35 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-This repo is a personal collection of Claude Code agents and skills designed to maximize development productivity. The goal is to automate repetitive tasks, standardize design→implement→debug workflows, and maintain a consistent personal development style.
+Personal collection of Claude Code agents designed to automate repetitive tasks and maintain a consistent development style.
 
-## Planned Structure
+## Structure
 
 ```
 .claude/
-  agents/        # Subagent definitions for Claude Code
-    service-architect   # Service design and architecture
-    code-debugger       # Code debugging workflows
-    writing-polisher    # Writing and text refinement
-  skills/        # Reusable skill files invokable via /skill-name
-    api-design
-    db-design
-    c-debug-checklist
-    korean-polishing
+  agents/          # Subagent definitions for Claude Code
+    blog-writer    # PAAR 구조 기술 블로그 → Tistory + GitHub + Obsidian
+    weekly-report  # 연구실 주간보고서 → 로컬 + Notion
+    schedule-briefer  # 일간 브리핑 (캘린더, Notion, Gmail, Slack, 학교 공지)
+docs/superpowers/
+  specs/           # 설계 문서
+  plans/           # 구현 플랜
+  pre-mortem/      # pre-mortem 리포트 및 프로세스 로그
 ```
+
+Skills are managed separately in `~/.agents/skills/` (see [my-agents](https://github.com/EunHye-03/my-agents)).
 
 ## Agent Format
 
-Agents live in `.claude/agents/<name>.md`. Each file should include:
+Agents live in `.claude/agents/<name>.md`. Each file includes:
 - `name`, `description`, and optionally `model`/`tools` in YAML frontmatter
 - A system prompt defining the agent's role, behavior, and constraints
 
-## Skill Format
-
-Skills live in `.claude/skills/<name>.md`. Each file should include:
-- `name`, `description`, and `type` in YAML frontmatter
-- The skill body: instructions, checklists, or workflows Claude follows when the skill is invoked
-
 ## Language
 
-Documentation and skill content in this repo is written in Korean where noted in the README (e.g., `korean-polishing`). Agent and skill frontmatter fields should remain in English for compatibility with Claude Code tooling.
+Agent content and documentation are written in Korean. Frontmatter fields remain in English for Claude Code compatibility.
