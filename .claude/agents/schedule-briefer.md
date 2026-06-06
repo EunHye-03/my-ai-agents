@@ -386,9 +386,9 @@ NOTION_TASKS에서 다음 우선순위로 선택:
 ### 출력 라우팅
 
 args에 `--slack`이 포함되어 있으면:
-- `slack_send_message` 툴로 자기 자신의 DM (user ID 또는 채널명 `@EunHye`)에 전송
+- `slack_send_message` 툴로 `#briefing` 채널에 전송
 - 전송 후 응답의 `ok` 필드를 확인한다
-  - `ok: true` → 터미널에 "✅ Slack 브리핑 전송 완료" 출력
+  - `ok: true` → 터미널에 "✅ Slack #briefing 채널 전송 완료" 출력
   - `ok: false` 또는 오류 → "⚠️ Slack 전송 실패 — 브리핑을 터미널에 출력합니다" 출력 후 브리핑을 터미널에 출력
 
 args에 `--slack`이 없으면:
