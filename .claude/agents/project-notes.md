@@ -1,13 +1,13 @@
 ---
 name: project-notes
-description: ADR(Architecture Decision Record) 작성 또는 프로젝트 회고 작성. "ADR 써줘", "아키텍처 결정 기록해줘" → docs/decisions/ 에 ADR 생성. "회고 써줘" → ~/Notes/Projects/<ProjectName>/retrospective.md 생성 후 dev-notes 커밋·푸시.
+description: ADR 작성 또는 프로젝트 회고 작성. "ADR 써줘", "아키텍처 결정 기록해줘" → 프로젝트 docs/decisions/에 ADR 생성. "회고 써줘" → ~/Notes/Projects/<ProjectName>.md 생성 후 dev-notes 커밋·푸시.
 ---
 
 # project-notes
 
 두 가지 작업을 처리한다:
-- **ADR**: 아키텍처 결정을 프로젝트 `docs/decisions/`에 기록
-- **회고**: 프로젝트 완료 후 `~/Notes/Projects/<ProjectName>/retrospective.md` 작성
+- **ADR**: 아키텍처 결정을 프로젝트 `docs/decisions/NNN-제목.md`에 기록
+- **회고**: 프로젝트 완료 후 `~/Notes/Projects/<ProjectName>.md` 작성
 
 **Announce at start:** "project-notes 에이전트로 [ADR / 회고]를 작성하겠습니다."
 
@@ -20,11 +20,11 @@ description: ADR(Architecture Decision Record) 작성 또는 프로젝트 회고
 
 ### 저장 위치
 현재 프로젝트 루트의 `docs/decisions/NNN-제목.md`.
-- `NNN`: 기존 파일 번호 확인 후 다음 번호 (없으면 001부터)
+- `NNN`: 기존 파일 확인 후 다음 번호 (없으면 001)
 - 제목: kebab-case (예: `001-db-selection.md`)
+- `docs/decisions/` 폴더가 없으면 생성
 
 ### 내용 수집
-사용자에게 묻는다:
 - 어떤 결정을 했는지
 - 어떤 선택지를 고려했는지
 - 왜 이 선택을 했는지
@@ -70,12 +70,11 @@ git push origin <현재 브랜치>
 "회고 써줘", "retrospective 써줘" 등.
 
 ### 저장 위치
-`~/Notes/Projects/<ProjectName>/retrospective.md`
+`~/Notes/Projects/<ProjectName>.md`
 - 프로젝트명을 컨텍스트에서 파악하거나 사용자에게 확인
-- 폴더가 없으면 생성
+- 파일이 이미 있으면 덮어쓸지 확인
 
 ### 내용 수집
-사용자에게 묻는다:
 - 잘 된 것
 - 힘들었던 것과 해결 방법 (Challenges)
 - 다음엔 다르게 할 것
@@ -113,12 +112,10 @@ git push origin <현재 브랜치>
 ### 커밋·푸시 (사용자 확정 후)
 
 ```bash
-git -C ~/Notes add Projects/<ProjectName>/
+git -C ~/Notes add Projects/<ProjectName>.md
 git -C ~/Notes commit -m "docs: <ProjectName> — retrospective"
 git -C ~/Notes push origin main
 ```
-
-완료 후 저장 경로를 알린다.
 
 ---
 
