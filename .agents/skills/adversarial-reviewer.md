@@ -1,0 +1,1 @@
+/Users/User/.agents/skills/adversarial-reviewer/SKILL.md

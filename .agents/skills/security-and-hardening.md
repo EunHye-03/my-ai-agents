@@ -1,0 +1,1 @@
+/Users/User/.agents/skills/security-and-hardening/SKILL.md

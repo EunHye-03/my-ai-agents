@@ -1,0 +1,1 @@
+/Users/User/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/systematic-debugging/SKILL.md
