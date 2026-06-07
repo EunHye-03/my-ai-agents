@@ -51,9 +51,9 @@ Critical 리스크가 있으면 사용자에게 알리고 계속할지 확인한
 
 ---
 
-## Step 3: 리뷰 (/pr-review 워크플로우)
+## Step 3: 리뷰 (pr-reviewer 에이전트)
 
-`/pr-review` 워크플로우를 실행한다 — 인라인 리뷰 금지, 반드시 워크플로우 호출.
+`pr-reviewer` 서브에이전트를 호출한다 — 인라인 리뷰 금지.
 PR 타입은 자동 추론되며, 결과는 `artifacts/review-final.md`에 저장된다.
 
 - ✅ 승인 → Step 4로 이동
@@ -76,11 +76,10 @@ PR 타입은 자동 추론되며, 결과는 `artifacts/review-final.md`에 저�
 
 ---
 
-## Step 5: PR 생성 (@pm + shipping-and-launch skill)
+## Step 5: PR 생성 (pr-writer 에이전트)
 
-@pm이 `shipping-and-launch` 스킬로 최종 체크리스트를 확인한다.
-구현 브랜치에서 main으로 PR을 생성한다.
-PR 설명에 `artifacts/issue.md` 수용 기준과 `artifacts/review.md` 리뷰 결과를 포함한다.
+`pr-writer` 서브에이전트를 호출한다.
+`artifacts/issue.md` 수용 기준을 기반으로 PR 제목과 본문을 작성하고 `gh pr create`로 생성한다.
 PR URL을 사용자에게 출력한다.
 
 → 상태 저장: `status: done`
