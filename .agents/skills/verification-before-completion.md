@@ -1,0 +1,1 @@
+/Users/User/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/verification-before-completion/SKILL.md

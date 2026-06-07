@@ -16,12 +16,30 @@ if [ -d "$TARGET/.agents" ]; then
   exit 1
 fi
 
+# 심링크를 실제 파일로 복사 (-L: dereference symlinks)
 cp -rL "$TEMPLATE_DIR" "$TARGET/.agents"
+
+# templates/ → context/ 로 복사 (프로젝트별 컨텍스트 파일)
+mkdir -p "$TARGET/.agents/context"
+cp "$TEMPLATE_DIR/templates/"*.md "$TARGET/.agents/context/"
+
+# artifacts/ 초기화
 mkdir -p "$TARGET/.agents/artifacts"
-echo ".agents/artifacts" >> "$TARGET/.gitignore" 2>/dev/null || true
+
+# .gitignore 처리
+if [ -f "$TARGET/.gitignore" ]; then
+  grep -qxF ".agents/artifacts" "$TARGET/.gitignore" || echo ".agents/artifacts" >> "$TARGET/.gitignore"
+else
+  echo ".agents/artifacts" > "$TARGET/.gitignore"
+fi
 
 echo "✓ .agents/ 초기화 완료: $TARGET"
 echo ""
+echo "다음 단계:"
+echo "  1. $TARGET/.agents/context/project.md 를 채우세요 (프로젝트 개요, 기술 스택)"
+echo "  2. $TARGET/.agents/context/domain-rules.md 를 채우세요 (도메인 용어, 비즈니스 규칙)"
+echo "  3. $TARGET/.agents/context/error-codes.md 를 채우세요 (에러 코드 목록)"
+echo ""
 echo "Antigravity에서 사용 가능한 슬래시 커맨드:"
-echo "  /dev-loop <기능명>   — 전체 개발 루프 (스펙 → 구현 → 리뷰 → PR)"
+echo "  /dev-loop <기능명>   — 전체 개발 루프 (사전 위험 검토 → 스펙 → 구현 → 리뷰 → QA → PR)"
 echo "  /pr-review <PR번호>  — PR 리뷰 루프"
