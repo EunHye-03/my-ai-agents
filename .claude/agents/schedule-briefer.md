@@ -28,33 +28,26 @@ date '+%Y-%m-%d (%a)'
 
 ## 2단계: Apple Calendar 수집
 
-AppleScript로 오늘/내일 일정을 가져온다. `icalBuddy`는 TCC 권한 문제로 사용하지 않음.
+Calendar 앱을 먼저 실행한 뒤 AppleScript로 오늘/내일 일정을 가져온다.
+중복 제거: 동일한 summary는 한 번만 출력 (Gmail 캘린더와 로컬 캘린더 중복 방지).
 
 ```bash
+open -a Calendar && sleep 2
 osascript << 'APPLESCRIPT'
 tell application "Calendar"
-    set today to current date
-    set startOfDay to today
+    -- startOfDay를 초 단위 덧셈으로 계산해 AppleScript date 참조 버그 회피
+    set startOfDay to current date
     set hours of startOfDay to 0
     set minutes of startOfDay to 0
     set seconds of startOfDay to 0
-    set endOfDay to today
-    set hours of endOfDay to 23
-    set minutes of endOfDay to 59
-    set seconds of endOfDay to 59
-
-    set tomorrow to today + (24 * 60 * 60)
-    set startOfTomorrow to tomorrow
-    set hours of startOfTomorrow to 0
-    set minutes of startOfTomorrow to 0
-    set seconds of startOfTomorrow to 0
-    set endOfTomorrow to tomorrow
-    set hours of endOfTomorrow to 23
-    set minutes of endOfTomorrow to 59
-    set seconds of endOfTomorrow to 59
+    set endOfDay to startOfDay + (23 * 3600 + 59 * 60 + 59)
+    set startOfTomorrow to startOfDay + (24 * 3600)
+    set endOfTomorrow to startOfTomorrow + (23 * 3600 + 59 * 60 + 59)
 
     set skipCals to {"생일", "대한민국의 휴일", "Holidays in South Korea", "대한민국 공휴일", "Siri 제안", "예정된 미리 알림"}
+    set seen to {}
     set output to ""
+
     repeat with cal in calendars
         set calName to name of cal
         set skip to false
@@ -65,19 +58,38 @@ tell application "Calendar"
             try
                 set todayEvents to (every event of cal whose start date >= startOfDay and start date <= endOfDay)
                 repeat with ev in todayEvents
-                    set evStart to start date of ev
-                    set hh to hours of evStart
-                    set mm to minutes of evStart
-                    set output to output & "[오늘] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & " " & summary of ev & "
+                    set evTitle to summary of ev
+                    if evTitle is not in seen then
+                        set end of seen to evTitle
+                        set evStart to start date of ev
+                        set hh to hours of evStart
+                        set mm to minutes of evStart
+                        if hh = 0 and mm = 0 then
+                            set output to output & "[오늘] 종일  " & evTitle & "
 "
+                        else
+                            set output to output & "[오늘] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & "  " & evTitle & "
+"
+                        end if
+                    end if
                 end repeat
                 set tomorrowEvents to (every event of cal whose start date >= startOfTomorrow and start date <= endOfTomorrow)
                 repeat with ev in tomorrowEvents
-                    set evStart to start date of ev
-                    set hh to hours of evStart
-                    set mm to minutes of evStart
-                    set output to output & "[내일] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & " " & summary of ev & "
+                    set evTitle to summary of ev
+                    set key to "tomorrow:" & evTitle
+                    if key is not in seen then
+                        set end of seen to key
+                        set evStart to start date of ev
+                        set hh to hours of evStart
+                        set mm to minutes of evStart
+                        if hh = 0 and mm = 0 then
+                            set output to output & "[내일] 종일  " & evTitle & "
 "
+                        else
+                            set output to output & "[내일] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & "  " & evTitle & "
+"
+                        end if
+                    end if
                 end repeat
             end try
         end if
@@ -89,14 +101,21 @@ APPLESCRIPT
 ```
 
 - 출력이 `(일정 없음)` 이면: `📅 일정\n_일정 없음_` 으로 기록
-- osascript 실패(Calendar 앱 없음, 권한 거부 등)이면: `📅 일정\n⚠️ Calendar 접근 실패` 로 기록
+- 종일 이벤트(HH:MM = 00:00)는 시간 대신 "종일"로 표시
+- osascript 실패 시: `📅 일정\n⚠️ Calendar 접근 실패` 로 기록
 - 성공 시 `[오늘] HH:MM 일정명` / `[내일] HH:MM 일정명` 형식으로 포맷
 
 ---
 
 ## 3단계: Notion 할 일 수집
 
-Notion 개인 통합 API로 할 일 페이지를 조회한다. (MCP 아닌 직접 API 호출)
+Notion 개인 통합 API로 Weekly To-Do 페이지를 조회한다. (MCP 아닌 직접 API 호출)
+
+**페이지 구조:**
+- `heading_2`: 주차 제목 (예: 📅 Weekly To-do 2026-06-01)
+- `bulleted_list_item` (×N): 주간 카테고리별 목표 (학업/프로젝트/KNU VI/과외 등)
+- `column_list`: 요일별 컬럼 (Monday~Sunday 중 해당 요일만 있음)
+  - 각 column: `heading_3` (요일명) + `to_do` 항목들
 
 **1. Keychain에서 토큰 읽기:**
 
@@ -104,60 +123,101 @@ Notion 개인 통합 API로 할 일 페이지를 조회한다. (MCP 아닌 직�
 NOTION_TOKEN=$(security find-generic-password -a "$USER" -s "notion-personal-token" -w 2>/dev/null)
 ```
 
-토큰 읽기 실패 시 (`NOTION_TOKEN`이 비어있으면): NOTION_TASKS = {status: "error"} 로 기록 후 다음 단계로 진행.
+토큰 읽기 실패 시: NOTION_TASKS = {status: "error"} 로 기록 후 다음 단계로 진행.
 
-**2. Notion API 호출 및 파싱:**
-
-Weekly To-Do 페이지는 **요일별 column 구조**로 되어 있다. 아래 순서로 수집한다.
+**2. API 호출 (3단계):**
 
 ```bash
-# Step 1: 페이지 최상위 블록 가져오기
+# Step 1: 페이지 최상위 블록 — 가장 최근 heading_2 다음의 bullet 목록과 column_list 찾기
 curl -s "https://api.notion.com/v1/blocks/002a894f-a829-83e9-b954-014816e6fa18/children?page_size=50" \
-  -H "Authorization: Bearer $NOTION_TOKEN" \
-  -H "Notion-Version: 2022-06-28"
-```
+  -H "Authorization: Bearer $NOTION_TOKEN" -H "Notion-Version: 2022-06-28"
 
-응답에서 첫 번째 `heading_2` 블록 = 가장 최근 주차. 그 다음 나오는 `column_list` 블록 ID를 찾는다.
-
-```bash
-# Step 2: column_list 하위 column ID 목록 가져오기
+# Step 2: column_list 하위 column ID 목록
 curl -s "https://api.notion.com/v1/blocks/{column_list_id}/children" \
-  -H "Authorization: Bearer $NOTION_TOKEN" \
-  -H "Notion-Version: 2022-06-28"
-```
+  -H "Authorization: Bearer $NOTION_TOKEN" -H "Notion-Version: 2022-06-28"
 
-```bash
-# Step 3: 각 column 하위 to_do 블록 가져오기 (column마다 반복)
+# Step 3: 각 column 하위 블록 (column마다 반복)
 curl -s "https://api.notion.com/v1/blocks/{column_id}/children" \
-  -H "Authorization: Bearer $NOTION_TOKEN" \
-  -H "Notion-Version: 2022-06-28"
+  -H "Authorization: Bearer $NOTION_TOKEN" -H "Notion-Version: 2022-06-28"
 ```
 
-**3. 미완료 항목 추출:**
+**3. 파싱 알고리즘:**
 
-각 column에서 `heading_3` (요일명: Monday~Sunday) 과 `type: "to_do"`이고 `to_do.checked: false`인 블록을 추출한다.
-각 블록의 텍스트는 `to_do.rich_text[].plain_text`를 이어붙인 값이다.
-오늘 요일에 해당하는 column의 미완료 항목을 먼저, 나머지 요일은 그 다음에 수집한다.
+```python
+from datetime import datetime
+import re
 
-**우선순위 분류 (이모지 기반):**
-- ‼️ 포함 항목 → P0 (지금 해야 함)
-- ❗️ 포함 항목 → P1 (오늘 안에)
-- ❕ 포함 항목 → P2 (여유 있으면)
-- 이모지 없는 항목 → P1 (기본값)
+DAY_MAP = {
+    'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3,
+    'Friday': 4, 'Saturday': 5, 'Sunday': 6
+}
+TODAY_WD = datetime.today().weekday()  # 0=Mon, 6=Sun
+TODAY_STR = datetime.today().strftime('%m/%d')
 
-**마감 추출:** 항목명에 `(MM/DD)`, `(YYYY-MM-DD)`, `~MM/DD` 형태가 있으면 마감일로 추출.
+def get_priority(text):
+    if '‼️' in text: return 'p0'
+    if '❗️' in text or '❗' in text: return 'p1'
+    if '🔜' in text: return 'deferred'   # 미룬 것
+    if '❕' in text: return 'p2'
+    return 'p1'  # 기본값
 
-수집 결과를 NOTION_TASKS 변수로 기억한다. 구조:
-- p0: [{name: "항목명", due: "MM/DD 또는 null"}]
-- p1: [{name: "항목명", due: "MM/DD 또는 null"}]
-- p2: [{name: "항목명", due: "MM/DD 또는 null"}]
-- status: "ok" / "error" / "empty"
+def clean(text):
+    # 우선순위 이모지 제거 후 trim
+    return re.sub(r'[‼️❗️❗🔜❕]', '', text).strip()
 
-이 데이터는 9단계(위험도 계산, "지금 가장 중요한 한 가지", "이번 주 놓치면 안 되는 것")에서 사용된다.
+def extract_due(text):
+    m = re.search(r'[~(](\d{1,2}/\d{1,2})[)]?', text)
+    return m.group(1) if m else None
+
+# Step 1 결과에서:
+# - 첫 번째 heading_2 이후 bulleted_list_item들 → week_categories
+# - 이후 첫 번째 column_list ID → 이번 주 컬럼
+
+week_categories = []  # [{"category": "학업 및 과제", "items": ["네프 과제", ...]}, ...]
+# heading_2 발견 후 column_list 전까지 bulleted_list_item 파싱:
+# bullet text 예: "학업 및 과제: 네프 과제, 운체 과제, 기계론 기말"
+# ": " 기준으로 split → category / items
+
+# Step 3 결과에서 각 column:
+day_name = heading_3 텍스트  # "Monday", "Tuesday" 등
+day_wd = DAY_MAP[day_name]
+
+tasks = {'day': day_name, 'p0': [], 'p1': [], 'p2': [], 'deferred': []}
+for block in column_children:
+    if block.type == 'to_do' and not block.to_do.checked:
+        raw = ''.join(t.plain_text for t in block.to_do.rich_text)
+        priority = get_priority(raw)
+        name = clean(raw)
+        due = extract_due(raw)
+        tasks[priority].append({'name': name, 'due': due})
+
+# 요일 기준 분류:
+if day_wd == TODAY_WD:
+    today_tasks = tasks        # 오늘
+elif day_wd > TODAY_WD:
+    upcoming.append(tasks)     # 이번 주 남은 날
+else:
+    if any tasks unchecked:
+        overdue.append(tasks)  # 지난 날 미완료
+```
+
+**4. 수집 결과 NOTION_TASKS 구조:**
+
+```
+{
+  "week_categories": [{"category": "학업 및 과제", "items": ["네프 과제", "기계론 기말"]}, ...],
+  "today": {"day": "요일명", "p0": [...], "p1": [...], "p2": [...], "deferred": [...]},
+  "upcoming": [{"day": "Tuesday", "p0": [], "p1": [...], "deferred": [...]}, ...],
+  "overdue": [{"day": "Monday", "p0": [], "p1": [...], "deferred": [...]}],
+  "status": "ok" / "error" / "empty"
+}
+```
+
+각 태스크 항목: `{"name": "텍스트(이모지 제거)", "due": "MM/DD 또는 null"}`
 
 **에러 처리:**
-- curl 실패 또는 API 오류 응답 시: NOTION_TASKS = {status: "error"}. 브리핑 조립 시 `⚠️ Notion 데이터 수집 실패` 출력
-- 미완료 항목이 0건이면: NOTION_TASKS = {status: "empty"}. 브리핑 조립 시 _할 일 없음_ 출력
+- curl 실패 또는 API 오류: NOTION_TASKS = {status: "error"} → 브리핑 조립 시 `⚠️ Notion 데이터 수집 실패` 출력
+- 미완료 항목 0건: NOTION_TASKS = {status: "empty"} → _할 일 없음_ 출력
 
 ---
 
@@ -239,7 +299,9 @@ URL: `https://international.knu.ac.kr/HOME/global/index.htm`
 - swedu: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 3건)
 - international: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 3건)
 
-마감일 추출: 공지 제목에서 날짜 패턴(`MM/DD`, `MM월 DD일`, `YYYY-MM-DD`) 발견 시 deadline에 저장. 이 데이터는 9단계 "이번 주 놓치면 안 되는 것" 섹션에서 사용된다.
+마감일 추출: 공지 제목에서 날짜 패턴(`MM/DD`, `MM월 DD일`, `YYYY-MM-DD`) 발견 시 deadline에 저장.
+**날짜 필터링:** deadline이 오늘 이전인 공지는 제외한다 (이미 지난 공지 표시 금지).
+이 데이터는 9단계 "이번 주 놓치면 안 되는 것" 섹션에서 사용된다.
 
 성공 시 포맷:
 
@@ -336,51 +398,53 @@ TODAY 날짜를 대한민국 법정 공휴일 목록과 비교한다. 자신의 
 
 ### 위험도 계산
 
-NOTION_TASKS.status가 "error"이면 위험도를 계산할 수 없으므로 `🟡 MED — Notion 수집 실패로 위험도 불확실` 로 설정.
+NOTION_TASKS.status가 "error"이면: `🟡 MED — Notion 수집 실패로 위험도 불확실`
 
-NOTION_TASKS.status가 "ok"이면:
-- 🔴 HIGH: p0 항목이 있고 그 중 due가 오늘이거나 이미 지난 것이 있는 경우; 또는 마감 없는 p0 항목이 2개 이상
-- 🟡 MED: p0 항목은 있으나 due가 모두 내일 이후인 경우; 또는 p0는 없지만 p1 중 due가 오늘인 것이 있는 경우
+NOTION_TASKS.status가 "ok"이면 today + upcoming + overdue 전체 p0/p1에서 판단:
+- 🔴 HIGH: p0 항목이 있고 due가 오늘이거나 이미 지난 것 / 또는 마감 없는 p0 항목이 2개 이상
+- 🟡 MED: p0는 있으나 due가 내일 이후 / 또는 p0 없지만 p1 중 due가 오늘
 - 🟢 LOW: p0 없고 오늘 마감 p1도 없음
 
 NOTION_TASKS.status가 "empty"이면: `🟢 LOW — 할 일 없음`
 
-위험도 이유를 한 줄로 작성한다 (예: "P0 마감 오늘: [항목명]", "P0 항목 3개 처리 필요", "긴급 항목 없음").
+위험도 이유 한 줄 예: "D-2 기계론 기말 (6/9)", "P0 항목 3개 처리 필요", "긴급 항목 없음"
 
 ### 지금 가장 중요한 한 가지 선택
 
-NOTION_TASKS에서 다음 우선순위로 선택:
-1. p0 항목 중 due가 가장 가까운 것
-2. p0가 없으면 p1 중 due가 가장 가까운 것
-3. due 정보 없으면 p0 첫 번째 항목, 그것도 없으면 p1 첫 번째 항목
-4. NOTION_TASKS.status가 "error"이거나 "empty"이면 이 섹션 생략
+우선순위 (deferred 항목은 후순위):
+1. today.p0 중 due가 가장 가까운 것
+2. upcoming p0 중 due가 가장 가까운 것
+3. today.p1 중 due가 가장 가까운 것
+4. upcoming p1 중 due가 가장 가까운 것
+5. due 없으면 today.p0 첫 번째, 없으면 today.p1 첫 번째
+6. NOTION_TASKS.status가 "error" / "empty"이면 이 섹션 생략
 
-예상 소요시간은 에이전트가 작업명 기반으로 추정한다 (예: "발표 준비"→2h, "이메일 답장"→30m).
+예상 소요시간: 작업명 기반으로 추정 ("기말 시험"→3h, "과제 제출"→2h, "이메일"→30m).
+마감까지 남은 일수: due가 있으면 `D-N` 표기.
 
-### 이번 주 놓치면 안 되는 것 수집
+### 이번 주 놓치면 안 되는 것
 
-오늘부터 7일 이내 마감인 항목을 수집:
-1. NOTION_TASKS의 p0+p1+p2에서 due가 오늘~7일 이내인 것
-2. KNU_NOTICES의 모든 소스에서 deadline이 오늘~7일 이내인 것
+오늘부터 7일 이내 마감인 항목:
+1. NOTION_TASKS 전체(today/upcoming/overdue)에서 due가 오늘~7일 이내인 p0+p1+p2
+2. KNU_NOTICES에서 deadline이 오늘~7일 이내인 것
+3. Calendar 이벤트에서 오늘~7일 이내인 것 (시험, 과제 마감 등)
 
-결과가 없으면 이 섹션 생략.
+결과 없으면 이 섹션 전체 생략.
 
 ### 추천 행동 생성
 
-수집한 전체 데이터 기반으로 2-3개 구체적인 행동을 생성한다:
-- GMAIL_DATA.unread_count >= 5: "미읽음 이메일 N건 — 빠른 확인 필요"
-- 위험도 HIGH이고 오늘 마감 p0 있음: "오늘 마감 P0 항목 먼저 처리 권장"
-- PROJECT_STATUS에 has_uncommitted = true인 레포가 있음: "[레포명] 미커밋 변경 있음 — 커밋 권장"
-- KNU_NOTICES에 deadline이 오늘~3일인 공지가 있음: "학교 공지 마감 임박 확인 필요"
-- 위 조건에 해당 없으면: "특이사항 없음. 계획대로 진행 권장"
+2-3개 구체적 행동:
+- GMAIL_DATA.unread_count >= 5 → "미읽음 이메일 N건 — 빠른 확인 필요"
+- 위험도 HIGH이고 오늘 마감 p0 있음 → "오늘 마감 P0 항목 먼저 처리"
+- PROJECT_STATUS에 has_uncommitted = true → "[레포명] 미커밋 변경 커밋 권장"
+- KNU_NOTICES에 deadline 오늘~3일 → "학교 공지 마감 임박 확인"
+- 조건 없으면 → "특이사항 없음. 계획대로 진행"
 
 ### 브리핑 조립
 
-위에서 수집한 모든 데이터를 아래 마크다운 형식으로 조립한다. 가독성을 위해 섹션 구분선(`---`)과 헤더(`##`)를 반드시 사용한다.
-
 ```
 # 🗓️ {TODAY} 브리핑
-{HOLIDAY_NAME이 null이 아니면: > 🎌 오늘은 {HOLIDAY_NAME}입니다}
+{HOLIDAY_NAME이 있으면: > 🎌 오늘은 {HOLIDAY_NAME}입니다}
 
 ---
 
@@ -390,38 +454,68 @@ NOTION_TASKS에서 다음 우선순위로 선택:
 ---
 
 ## 🎯 지금 가장 중요한 한 가지
-**{작업명}** — 예상 {Xh/Xm} | 마감까지 {D일} / 오늘 마감
+**{작업명}** — 예상 {Xh/Xm} | {D-N / 오늘 마감}
+
+---
+
+## 📋 이번 주 목표
+{NOTION_TASKS.week_categories를 카테고리별로:}
+- **{카테고리}** — {항목1}, {항목2}, ...
 
 ---
 
 ## ✅ 오늘 할 일
+{NOTION_TASKS.today 기준}
 
-{p0 항목이 있으면:}
+{p0 있으면:}
 ### 🔴 P0 — 지금 해야 함
-- [ ] {p0 항목 1}
-- [ ] {p0 항목 2}
+- [ ] {항목명}
 
-{p1 항목이 있으면:}
+{p1 있으면:}
 ### 🟡 P1 — 오늘 안에
-- [ ] {p1 항목 1}
+- [ ] {항목명}
 
-{p2 항목이 있으면:}
+{p2 있으면:}
 ### ⚪ P2 — 여유 있으면
-- [ ] {p2 항목 1}
+- [ ] {항목명}
 
-{NOTION_TASKS.status가 error이면: > ⚠️ Notion 데이터 수집 실패}
-{NOTION_TASKS.status가 empty이면: _할 일 없음_}
+{today 컬럼 없거나 모두 완료: _오늘 할 일 없음_}
+
+---
+
+## 🔜 미룬 항목
+{전체 날짜의 deferred 항목, 날 순서대로:}
+- **[요일]** 항목명
+{없으면 이 섹션 생략}
+
+---
+
+## 📅 이번 주 남은 일정 (Notion + Calendar)
+{NOTION_TASKS.upcoming — 오늘 이후 날, 비어있지 않은 날만:}
+**[요일]**
+- [ ] 항목명
+
+{overdue 중 deferred 아닌 것 있으면:}
+**⚠️ 지난 날 미완료**
+- [요일] 항목명
+
+{Calendar 이번 주 이벤트 — 오늘 이후:}
+- **내일 {HH:MM}** 이벤트명
+- **{요일} 종일** 이벤트명
+
+{모두 없으면 섹션 생략}
 
 ---
 
 ## 👀 이번 주 놓치면 안 되는 것
-{이번 주 마감 항목을 `| 항목 | 마감 | 남은 일수 |` 표 형식으로 출력}
+{표 형식: | 항목 | 마감 | D-N |}
 {없으면 이 섹션 전체 생략}
 
 ---
 
-## 📅 일정
-{일정이 있으면 `- **HH:MM** 일정명` 형식. 내일 일정은 `- 내일 **HH:MM** 일정명`}
+## 📅 일정 (오늘)
+{Calendar 오늘 이벤트 있으면:}
+- **{HH:MM}** 이벤트명  (종일이면 "종일")
 {없으면: _일정 없음_}
 
 ---
