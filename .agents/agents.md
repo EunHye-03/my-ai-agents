@@ -1,11 +1,11 @@
 # Dev Team Agents
 
-<!-- version: 1.3 | updated: 2026-06-07 | reason: @engineer 커밋 규칙 추가 -->
+<!-- version: 1.4 | updated: 2026-06-07 | reason: context 파일 확장자 수정 (project.md → project.yaml) -->
 
 AI-native 개발 루프를 위한 에이전트 페르소나 정의.
 각 에이전트는 @handle로 호출하거나 workflow에서 자동 위임됩니다.
 
-세션 시작 시 `context/project.md`, `context/domain-rules.md`를 먼저 읽는다.
+세션 시작 시 `context/project.yaml`, `context/domain-rules.md`를 먼저 읽는다.
 
 ---
 
