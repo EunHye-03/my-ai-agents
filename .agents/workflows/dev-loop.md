@@ -51,12 +51,10 @@ Critical 리스크가 있으면 사용자에게 알리고 계속할지 확인한
 
 ---
 
-## Step 3: 리뷰 (@reviewer + code-review skill)
+## Step 3: 리뷰 (/pr-review 워크플로우)
 
-@reviewer가 `code-review` 스킬을 실행한다.
-보안 관련 기능이면 `security-and-hardening` 스킬을 추가 실행한다.
-중요한 기능이면 `adversarial-reviewer` 스킬로 반대 관점 검토를 추가한다.
-`artifacts/review.md`에 결과 저장.
+`/pr-review` 워크플로우를 실행한다 — 인라인 리뷰 금지, 반드시 워크플로우 호출.
+PR 타입은 자동 추론되며, 결과는 `artifacts/review-final.md`에 저장된다.
 
 - ✅ 승인 → Step 4로 이동
 - ❌ 반려 → @engineer에게 피드백 전달, Step 2로 복귀 (해당 항목만 재처리)
