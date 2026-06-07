@@ -19,9 +19,9 @@ fi
 # 심링크를 실제 파일로 복사 (-L: dereference symlinks)
 cp -rL "$TEMPLATE_DIR" "$TARGET/.agents"
 
-# templates/ → context/ 로 복사 (프로젝트별 컨텍스트 파일)
+# templates/ → context/ 로 복사 (프로젝트별 컨텍스트 파일, md + yaml 모두)
 mkdir -p "$TARGET/.agents/context"
-cp "$TEMPLATE_DIR/templates/"*.md "$TARGET/.agents/context/"
+cp "$TEMPLATE_DIR/templates/"* "$TARGET/.agents/context/"
 
 # artifacts/ 초기화
 mkdir -p "$TARGET/.agents/artifacts"
@@ -36,9 +36,9 @@ fi
 echo "✓ .agents/ 초기화 완료: $TARGET"
 echo ""
 echo "다음 단계:"
-echo "  1. $TARGET/.agents/context/project.md 를 채우세요 (프로젝트 개요, 기술 스택)"
+echo "  1. $TARGET/.agents/context/project.yaml 를 채우세요 (프로젝트 개요, 기술 스택)"
 echo "  2. $TARGET/.agents/context/domain-rules.md 를 채우세요 (도메인 용어, 비즈니스 규칙)"
-echo "  3. $TARGET/.agents/context/error-codes.md 를 채우세요 (에러 코드 목록)"
+echo "  3. $TARGET/.agents/context/error-codes.yaml 를 채우세요 (에러 코드 목록)"
 echo ""
 echo "Antigravity에서 사용 가능한 슬래시 커맨드:"
 echo "  /dev-loop <기능명>   — 전체 개발 루프 (사전 위험 검토 → 스펙 → 구현 → 리뷰 → QA → PR)"

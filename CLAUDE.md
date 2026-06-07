@@ -32,3 +32,12 @@ Agents live in `.claude/agents/<name>.md`. Each file includes:
 ## Language
 
 Agent content and documentation are written in Korean. Frontmatter fields remain in English for Claude Code compatibility.
+
+## 문서 형식 규칙
+
+구조적 데이터(에러 코드, 기술 스택, 설정값, 코드 목록)는 **YAML**로 작성한다.
+설명·규칙·가이드처럼 산문이 필요한 문서는 **Markdown**으로 작성한다.
+
+| YAML로 쓸 것 | Markdown으로 쓸 것 |
+|---|---|
+| error-codes, project context, config | domain-rules, agents, workflows, ADR |
