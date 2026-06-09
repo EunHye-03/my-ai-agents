@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(security find-generic-password *)",
+      "Bash(/opt/homebrew/bin/icalBuddy *)",
+      "Bash(curl *)",
+      "Bash(osascript *)",
+      "Bash(git -C * log *)",
+      "Bash(git -C * remote *)",
+      "Bash(git -C * branch *)",
+      "Bash(git -C * status)",
+      "Bash(git -C * diff *)",
+      "WebFetch",
+      "mcp__claude_ai_Gmail__search_threads",
+      "mcp__claude_ai_Slack__slack_search_public_and_private",
+      "mcp__claude_ai_Slack__slack_search_channels",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "mcp__claude_ai_Notion__notion-search"
+    ]
+  }
+}
