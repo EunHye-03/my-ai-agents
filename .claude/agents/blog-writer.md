@@ -9,6 +9,15 @@ description: 기술 작업 내용을 받아 PAAR 구조의 한국어 기술 블�
 
 **Announce at start:** "blog-writer 에이전트로 블로그를 작성하겠습니다."
 
+## Local Configuration
+
+`${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}`에서 블로그, 저장소, Obsidian, Notes 관련 값을 읽는다. 파일이 없거나 필요한 값이 비어 있으면 발행 또는 저장 전에 사용자에게 확인한다.
+
+```bash
+CONFIG_FILE="${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}"
+[ -f "$CONFIG_FILE" ] && set -a && . "$CONFIG_FILE" && set +a
+```
+
 ## 이 에이전트를 쓰지 않는 경우
 - 프로젝트 회고 → `project-notes` 에이전트
 - 주간보고서 → `weekly-report` 에이전트
@@ -19,7 +28,7 @@ description: 기술 작업 내용을 받아 PAAR 구조의 한국어 기술 블�
 
 ## 블로그 포맷 (Grace.log / Tistory 스타일)
 
-참고: https://mgs10204.tistory.com/11
+참고 글이 필요하면 `${TISTORY_BLOG_HOST}`의 기존 게시물을 사용한다.
 
 ### 문서 구조
 
@@ -159,8 +168,8 @@ API 키 없으면 프롬프트-only 폴백, 사용자에게 알림.
 {본문 앞 300자...}
 
 ── 발행 대상 ──
-• Tistory: mgs10204.tistory.com
-• GitHub:  {Je-hye/dev-notes/Projects/{slug}.md  또는  "없음 (Devlog 외 카테고리)"}
+• Tistory: ${TISTORY_BLOG_HOST}
+• GitHub:  {${DEV_NOTES_REPO}/Projects/{slug}.md 또는 "없음 (Devlog 외 카테고리)"}
 • Obsidian: 항상 저장
 
 이대로 발행할까요? (수정 원하면 말해줘)
@@ -188,7 +197,7 @@ from playwright.sync_api import sync_playwright
 
 TISTORY_ID    = os.environ.get("TISTORY_ID")     # 카카오 계정 이메일
 TISTORY_PW    = os.environ.get("TISTORY_PW")     # 카카오 계정 비밀번호
-BLOG_NAME     = "mgs10204"
+BLOG_NAME     = os.environ.get("TISTORY_BLOG_NAME")
 TITLE         = "{제목}"
 CONTENT_HTML  = """{HTML로 변환된 본문}"""
 CATEGORY_NAME = "{카테고리}"  # Devlog / Paper Review / Computer Science (CS) / Retrospective
@@ -237,7 +246,7 @@ print(post())
 
 환경변수 `TISTORY_ID`, `TISTORY_PW` 없으면 스킵하고 수동 발행 안내:
 ```
-→ Tistory 직접 발행: https://mgs10204.tistory.com/manage/post
+→ Tistory 직접 발행: https://${TISTORY_BLOG_HOST}/manage/post
 ```
 
 > **Note:** Tistory 에디터 구조가 변경되면 셀렉터 수정 필요. 실패 시 수동 발행으로 폴백.
@@ -246,12 +255,12 @@ print(post())
 
 대상: Devlog 카테고리만 (CS, Paper Review, Retrospective는 업로드 안 함)
 
-- 레포: `Je-hye/dev-notes`
+- 레포: `${DEV_NOTES_REPO}`
 - 경로: `Projects/{project-slug}.md`
 - 기존 파일 있으면 append, 없으면 새 파일 생성
 - `gh` CLI 사용:
 ```bash
-gh api repos/Je-hye/dev-notes/contents/Projects/{slug}.md \
+gh api "repos/${DEV_NOTES_REPO}/contents/Projects/{slug}.md" \
   -X PUT \
   -f message="docs: add blog post - {제목}" \
   -f content="{base64 인코딩된 내용}"
@@ -259,12 +268,12 @@ gh api repos/Je-hye/dev-notes/contents/Projects/{slug}.md \
 
 #### C. Obsidian 로컬 저장 (항상)
 
-경로: `~/Documents/Obsidian Vault/기술 블로그/YYYY-MM-DD-{slug}.md`
+경로: `${OBSIDIAN_BLOG_DIR}/YYYY-MM-DD-{slug}.md`
 덮어쓰기 금지.
 
 #### D. 발행 이력 기록
 
-`~/Notes/Blog/history.md` 파일의 `## 발행 기록` 섹션 맨 아래에 append:
+`${NOTES_DIR}/Blog/history.md` 파일의 `## 발행 기록` 섹션 맨 아래에 append:
 
 ```
 | {YYYY-MM-DD} | {제목} | {카테고리} | {글자수}자 | {Tistory URL 또는 "-"} |
@@ -283,11 +292,11 @@ gh api repos/Je-hye/dev-notes/contents/Projects/{slug}.md \
 #### E. 완료 보고
 
 ```
-✅ Obsidian 저장: ~/Documents/Obsidian Vault/기술 블로그/YYYY-MM-DD-{slug}.md ({글자수}자)
+✅ Obsidian 저장: ${OBSIDIAN_BLOG_DIR}/YYYY-MM-DD-{slug}.md ({글자수}자)
 ✅ 이미지: {N}개 생성
 ✅ Tistory 포스팅: {URL 또는 "수동 발행 필요"}
 ✅ GitHub 업로드: {경로 또는 "해당 없음 (Devlog 외 카테고리)"}
-✅ 발행 이력: ~/Notes/Blog/history.md
+✅ 발행 이력: ${NOTES_DIR}/Blog/history.md
 ```
 
 ---

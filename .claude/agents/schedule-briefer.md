@@ -9,6 +9,15 @@ description: 하루 브리핑을 생성하는 에이전트. "브리핑해줘", "
 
 **Announce at start:** "schedule-briefer로 오늘 브리핑을 수집하겠습니다."
 
+## Local Configuration
+
+실행 전에 `${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}`의 값을 사용한다. 실제 토큰과 비밀번호는 이 파일에도 저장하지 않고 Keychain 또는 도구 인증을 사용한다. 파일이 없거나 값이 비어 있는 소스는 실패로 처리하지 않고 건너뛴다.
+
+```bash
+CONFIG_FILE="${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}"
+[ -f "$CONFIG_FILE" ] && set -a && . "$CONFIG_FILE" && set +a
+```
+
 ## 실행 원칙
 
 - 각 소스는 독립적으로 수집한다. 하나 실패해도 나머지는 계속 진행한다.
@@ -113,14 +122,14 @@ Notion 개인 통합 API로 Weekly To-Do 페이지를 조회한다. (MCP 아닌 
 
 **페이지 구조:**
 - `heading_2`: 주차 제목 (예: 📅 Weekly To-do 2026-06-01)
-- `bulleted_list_item` (×N): 주간 카테고리별 목표 (학업/프로젝트/KNU VI/과외 등)
+- `bulleted_list_item` (×N): 주간 카테고리별 목표
 - `column_list`: 요일별 컬럼 (Monday~Sunday 중 해당 요일만 있음)
   - 각 column: `heading_3` (요일명) + `to_do` 항목들
 
 **1. Keychain에서 토큰 읽기:**
 
 ```bash
-NOTION_TOKEN=$(security find-generic-password -a "$USER" -s "notion-personal-token" -w 2>/dev/null)
+NOTION_TOKEN=$(security find-generic-password -a "$USER" -s "$NOTION_KEYCHAIN_SERVICE" -w 2>/dev/null)
 ```
 
 토큰 읽기 실패 시: NOTION_TASKS = {status: "error"} 로 기록 후 다음 단계로 진행.
@@ -129,7 +138,7 @@ NOTION_TOKEN=$(security find-generic-password -a "$USER" -s "notion-personal-tok
 
 ```bash
 # Step 1: 페이지 최상위 블록 — 가장 최근 heading_2 다음의 bullet 목록과 column_list 찾기
-curl -s "https://api.notion.com/v1/blocks/002a894f-a829-83e9-b954-014816e6fa18/children?page_size=50" \
+curl -s "https://api.notion.com/v1/blocks/${NOTION_TASKS_BLOCK_ID}/children?page_size=50" \
   -H "Authorization: Bearer $NOTION_TOKEN" -H "Notion-Version: 2022-06-28"
 
 # Step 2: column_list 하위 column ID 목록
@@ -272,32 +281,21 @@ Slack MCP로 미읽음 메시지를 조회한다.
 
 ---
 
-## 6단계: 학교 공지 수집
+## 6단계: 공지 소스 수집
 
-세 URL을 각각 독립적으로 WebFetch로 수집한다. 하나 실패해도 나머지는 계속 진행한다.
+`NOTICE_SOURCE_1_*`부터 `NOTICE_SOURCE_3_*`까지 설정된 URL을 각각 독립적으로 WebFetch한다. 값이 비어 있는 소스는 건너뛰며, 하나가 실패해도 나머지는 계속 진행한다.
 
-### CSE 학과 공지
-URL: `https://cse.knu.ac.kr/index.php`
-커뮤니티 섹션의 최신 공지 5건을 추출한다.
-- HTTP 비정상 응답 또는 에러 페이지이면: `[CSE] ⚠️ 사이트 접근 불가`
-- 파싱 실패(공지 목록을 찾을 수 없음)이면: `[CSE] ⚠️ 공지 파싱 실패`
+각 소스는 다음 설정을 사용한다.
 
-### 소프트웨어교육원 공지
-URL: `https://swedu.knu.ac.kr/05_sub/01_sub.html`
-최신 공지 3건을 추출한다.
-- HTTP 비정상 응답 또는 에러 페이지이면: `[SW교육원] ⚠️ 사이트 접근 불가`
-- 파싱 실패(공지 목록을 찾을 수 없음)이면: `[SW교육원] ⚠️ 공지 파싱 실패`
+```text
+NOTICE_SOURCE_N_LABEL
+NOTICE_SOURCE_N_URL
+NOTICE_SOURCE_N_LIMIT
+```
 
-### 경북대 국제처 공지
-URL: `https://international.knu.ac.kr/HOME/global/index.htm`
-최신 공지 3건을 추출한다.
-- HTTP 비정상 응답 또는 에러 페이지이면: `[국제처] ⚠️ 사이트 접근 불가`
-- 파싱 실패(공지 목록을 찾을 수 없음)이면: `[국제처] ⚠️ 공지 파싱 실패`
-
-수집 결과를 KNU_NOTICES 변수로 기억한다:
-- cse: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 5건)
-- swedu: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 3건)
-- international: [{title: "공지 제목", deadline: "MM/DD 또는 null"}] (최대 3건)
+수집 결과를 NOTICE_DATA 변수로 기억한다:
+- sources: [{label: "소스명", items: [{title: "공지 제목", deadline: "MM/DD 또는 null"}]}]
+- status: "ok" / "error" / "empty"
 
 마감일 추출: 공지 제목에서 날짜 패턴(`MM/DD`, `MM월 DD일`, `YYYY-MM-DD`) 발견 시 deadline에 저장.
 **날짜 필터링:** deadline이 오늘 이전인 공지는 제외한다 (이미 지난 공지 표시 금지).
@@ -305,28 +303,26 @@ URL: `https://international.knu.ac.kr/HOME/global/index.htm`
 
 성공 시 포맷:
 
-🏫 학교 공지
-- [CSE] 공지 제목 1
-- [CSE] 공지 제목 2
-- [SW교육원] 공지 제목 1
-- [SW교육원] 공지 제목 2
-- [국제처] 공지 제목 1
+🏫 공지
+- [소스 1] 공지 제목 1
+- [소스 1] 공지 제목 2
+- [소스 2] 공지 제목 1
 
-(CSE 최대 5건, SW교육원·국제처 각 최대 3건을 소스 태그와 함께 나열)
+(각 소스의 `NOTICE_SOURCE_N_LIMIT`만큼 소스 태그와 함께 나열)
 
 세 소스 모두 실패 시:
 
-🏫 학교 공지
-⚠️ 학교 사이트 전체 접근 불가 (네트워크 또는 URL 변경 확인)
+🏫 공지
+⚠️ 공지 소스 전체 접근 불가 (네트워크 또는 URL 변경 확인)
 
 ---
 
 ## 7단계: 프로젝트 현황 수집
 
-`~/src/repos/` 하위 디렉토리 중 최근 30일 내 커밋이 있는 레포만 수집한다. 최대 10개 상한.
+`${REPOS_DIR}` 하위 디렉토리 중 최근 30일 내 커밋이 있는 레포만 수집한다. 최대 10개 상한.
 
 ```bash
-for dir in ~/src/repos/*/; do
+for dir in "$REPOS_DIR"/*/; do
   if [ -d "$dir/.git" ]; then
     count=$(git -C "$dir" log --since="30 days ago" --oneline 2>/dev/null | wc -l)
     if [ "$count" -gt 0 ]; then
@@ -363,10 +359,10 @@ done | head -10
 
 ## 8단계: AI 컨텍스트 수집
 
-`~/.claude/projects/` 하위에서 최근 수정된 `MEMORY.md` 파일을 최대 3개 읽는다.
+`${CLAUDE_PROJECTS_DIR}` 하위에서 최근 수정된 `MEMORY.md` 파일을 최대 3개 읽는다.
 
 ```bash
-ls -t ~/.claude/projects/*/memory/MEMORY.md 2>/dev/null | head -3
+ls -t "$CLAUDE_PROJECTS_DIR"/*/memory/MEMORY.md 2>/dev/null | head -3
 ```
 
 각 파일을 Read 툴로 읽어 핵심 항목을 요약한다. 요약 기준:
@@ -426,7 +422,7 @@ NOTION_TASKS.status가 "empty"이면: `🟢 LOW — 할 일 없음`
 
 오늘부터 7일 이내 마감인 항목:
 1. NOTION_TASKS 전체(today/upcoming/overdue)에서 due가 오늘~7일 이내인 p0+p1+p2
-2. KNU_NOTICES에서 deadline이 오늘~7일 이내인 것
+2. NOTICE_DATA에서 deadline이 오늘~7일 이내인 것
 3. Calendar 이벤트에서 오늘~7일 이내인 것 (시험, 과제 마감 등)
 
 결과 없으면 이 섹션 전체 생략.
@@ -437,7 +433,7 @@ NOTION_TASKS.status가 "empty"이면: `🟢 LOW — 할 일 없음`
 - GMAIL_DATA.unread_count >= 5 → "미읽음 이메일 N건 — 빠른 확인 필요"
 - 위험도 HIGH이고 오늘 마감 p0 있음 → "오늘 마감 P0 항목 먼저 처리"
 - PROJECT_STATUS에 has_uncommitted = true → "[레포명] 미커밋 변경 커밋 권장"
-- KNU_NOTICES에 deadline 오늘~3일 → "학교 공지 마감 임박 확인"
+- NOTICE_DATA에 deadline 오늘~3일 → "공지 마감 임박 확인"
 - 조건 없으면 → "특이사항 없음. 계획대로 진행"
 
 ### 브리핑 조립
@@ -533,15 +529,9 @@ NOTION_TASKS.status가 "empty"이면: `🟢 LOW — 할 일 없음`
 
 ---
 
-## 🏫 학교 공지
-{CSE, SW교육원, 국제처 순서로. 소스명을 bold로:}
-**[CSE]**
-- 공지 제목
-
-**[SW교육원]**
-- 공지 제목
-
-**[국제처]**
+## 🏫 공지
+{설정된 소스 순서로 소스명을 bold로:}
+**[소스명]**
 - 공지 제목
 
 ---
@@ -567,9 +557,9 @@ NOTION_TASKS.status가 "empty"이면: `🟢 LOW — 할 일 없음`
 ### 출력 라우팅
 
 args에 `--slack`이 포함되어 있으면:
-- `slack_send_message` 툴로 `#briefing` 채널에 전송
+- `slack_send_message` 툴로 `${SLACK_BRIEFING_CHANNEL}` 채널에 전송
 - 전송 후 응답의 `ok` 필드를 확인한다
-  - `ok: true` → 터미널에 "✅ Slack #briefing 채널 전송 완료" 출력
+  - `ok: true` → 터미널에 "✅ Slack ${SLACK_BRIEFING_CHANNEL} 채널 전송 완료" 출력
   - `ok: false` 또는 오류 → "⚠️ Slack 전송 실패 — 브리핑을 터미널에 출력합니다" 출력 후 브리핑을 터미널에 출력
 
 args에 `--slack`이 없으면:

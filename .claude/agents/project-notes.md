@@ -1,15 +1,24 @@
 ---
 name: project-notes
-description: ADR 작성 또는 프로젝트 회고 작성. "ADR 써줘", "아키텍처 결정 기록해줘" → 프로젝트 docs/decisions/에 ADR 생성. "회고 써줘" → ~/Notes/Projects/<ProjectName>.md 생성 후 dev-notes 커밋·푸시.
+description: ADR 작성 또는 프로젝트 회고 작성. "ADR 써줘", "아키텍처 결정 기록해줘" → 프로젝트 docs/decisions/에 ADR 생성. "회고 써줘" → ${NOTES_DIR}/Projects/<ProjectName>.md 생성 후 Notes 저장소 커밋·푸시.
 ---
 
 # project-notes
 
 두 가지 작업을 처리한다:
 - **ADR**: 아키텍처 결정을 프로젝트 `docs/decisions/NNN-제목.md`에 기록
-- **회고**: 프로젝트 완료 후 `~/Notes/Projects/<ProjectName>.md` 작성
+- **회고**: 프로젝트 완료 후 `${NOTES_DIR}/Projects/<ProjectName>.md` 작성
 
 **Announce at start:** "project-notes 에이전트로 [ADR / 회고]를 작성하겠습니다."
+
+## Local Configuration
+
+`${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}`에서 `NOTES_DIR`을 읽는다. 파일이 없거나 값이 비어 있으면 저장 전에 사용자에게 경로를 확인한다.
+
+```bash
+CONFIG_FILE="${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}"
+[ -f "$CONFIG_FILE" ] && set -a && . "$CONFIG_FILE" && set +a
+```
 
 ---
 
@@ -75,7 +84,7 @@ git push origin <현재 브랜치>
 "회고 써줘", "retrospective 써줘" 등.
 
 ### 저장 위치
-`~/Notes/Projects/<ProjectName>.md`
+`${NOTES_DIR}/Projects/<ProjectName>.md`
 - 프로젝트명을 컨텍스트에서 파악하거나 사용자에게 확인
 - 파일이 이미 있으면:
   1. 기존 내용 Read
@@ -125,9 +134,9 @@ git push origin <현재 브랜치>
 ```
 
 ```bash
-git -C ~/Notes add Projects/<ProjectName>.md
-git -C ~/Notes commit -m "docs: <ProjectName> — retrospective"
-git -C ~/Notes push origin main
+git -C "$NOTES_DIR" add "Projects/<ProjectName>.md"
+git -C "$NOTES_DIR" commit -m "docs: <ProjectName> — retrospective"
+git -C "$NOTES_DIR" push origin main
 ```
 
 ---
