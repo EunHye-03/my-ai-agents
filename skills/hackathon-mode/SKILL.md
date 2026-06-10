@@ -53,6 +53,7 @@ description: Use when building under a hard deadline — hackathon, rapid protot
 **Backend 선택 기준**:
 ```
 REST API 필요, Python 선호       → FastAPI + uvicorn
+DB 모델 + 어드민이 핵심          → Django (ORM + admin 패널 내장)
 REST API 필요, Java/Kotlin 선호  → Spring Boot
 AI 모델 서빙, 빠른 프로토        → FastAPI (Python 생태계 활용)
 백엔드 불필요 (브라우저 only)    → 생략
@@ -116,6 +117,16 @@ python -m venv .venv && source .venv/bin/activate
 pip install fastapi uvicorn python-multipart
 # main.py — API + static 서빙 / index.html — UI
 # uvicorn main:app --reload
+```
+
+### Django (DB + 어드민 필요 시)
+```bash
+pip install django djangorestframework
+django-admin startproject proto && cd proto
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+# /admin 에서 데이터 바로 확인 가능
 ```
 
 ### Spring Boot
