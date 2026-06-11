@@ -369,7 +369,11 @@ done | head -10
 
 ## 8단계: AI 컨텍스트 수집
 
-`${CLAUDE_PROJECTS_DIR}` 하위에서 최근 수정된 `MEMORY.md` 파일을 최대 3개 읽는다.
+네 가지 소스를 독립적으로 수집한다. 각각 실패해도 나머지는 계속 진행한다.
+
+### 8-1: Claude Code / Claude CLI
+
+**MEMORY.md (구조적 컨텍스트):**
 
 ```bash
 ls -t "$CLAUDE_PROJECTS_DIR"/*/memory/MEMORY.md 2>/dev/null | head -3
@@ -380,19 +384,118 @@ ls -t "$CLAUDE_PROJECTS_DIR"/*/memory/MEMORY.md 2>/dev/null | head -3
 - 최근 중요한 결정 또는 피드백
 - 다음 할 일로 이어지는 컨텍스트
 
+**지난 24시간 활동 (history.jsonl):**
+
+```bash
+python3 - << 'EOF'
+import json, time, sys
+
+cutoff = time.time() * 1000 - 86400000  # 24시간 전 (ms)
+items = []
+try:
+    with open('/Users/User/.claude/history.jsonl') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            if obj.get('timestamp', 0) > cutoff:
+                display = obj.get('display', '').strip()
+                if display:
+                    items.append(display[:80])
+    # 중복 제거 (순서 유지), 최신 10개
+    seen, unique = set(), []
+    for item in reversed(items):
+        if item not in seen:
+            seen.add(item)
+            unique.insert(0, item)
+    result = unique[:10]
+    print(f"count:{len(items)}")
+    for r in result:
+        print(r)
+except Exception as e:
+    print(f"error:{e}", file=sys.stderr)
+EOF
+```
+
+출력 첫 줄 `count:N` → 24시간 내 총 명령어 수로 기록.
+이후 줄 → 대표 활동 목록으로 기록.
+
+### 8-2: Gemini CLI
+
+```bash
+# 최근 7일 내 사용 프로젝트 (수정 시간 기준)
+find ~/.gemini/history -maxdepth 1 -mindepth 1 -type d 2>/dev/null | while read dir; do
+    mtime=$(stat -f "%m" "$dir" 2>/dev/null)
+    now=$(date +%s)
+    age=$(( (now - mtime) / 86400 ))
+    if [ "$age" -le 7 ]; then
+        name=$(basename "$dir")
+        date_str=$(stat -f "%Sm" -t "%m/%d" "$dir" 2>/dev/null)
+        root=$(cat "$dir/.project_root" 2>/dev/null | head -1)
+        echo "- $name ($date_str) → $root"
+    fi
+done
+
+# 최근 대화 DB에서 텍스트 추출 (best effort — 실패 허용)
+DB=$(ls -t ~/.gemini/antigravity/conversations/*.db 2>/dev/null | head -1)
+if [ -n "$DB" ]; then
+    strings "$DB" 2>/dev/null \
+    | grep -E "^[가-힣a-zA-Z0-9 ,.!?:()]{10,100}$" \
+    | grep -vE "SQLite|System Prompt|Chat Messages|guidelines|Project structure|Listing project" \
+    | tail -5
+fi
+```
+
+7일 내 사용 프로젝트가 없으면: `(최근 7일 내 Gemini CLI 사용 없음)` 으로 기록.
+DB 추출 실패 시: 프로젝트 목록만 기록.
+
+### 8-3: ChatGPT
+
+```bash
+# 마지막 대화 파일 수정 날짜 확인 (내용은 암호화됨)
+CHATGPT_DIR=~/Library/Application\ Support/com.openai.atlas/workspace-data
+CONV_DIR=$(ls -d "$CHATGPT_DIR"/user-*/conversations-v3 2>/dev/null | head -1)
+if [ -n "$CONV_DIR" ]; then
+    last_date=$(ls -lt "$CONV_DIR"/*.data 2>/dev/null | head -1 | awk '{print $6, $7, $8}')
+    echo "마지막 사용: $last_date (대화 내용 암호화 — 접근 불가)"
+else
+    echo "(ChatGPT 앱 데이터 없음)"
+fi
+```
+
 수집 결과를 AI_CONTEXT 변수로 기억한다:
-- summaries: ["요약 항목 1", "요약 항목 2", ...]
+- claude_memory: ["MEMORY.md 요약 항목들"]
+- claude_history: {count: N, items: ["최근 활동 1", ...]}
+- gemini_projects: ["프로젝트명 (날짜)", ...]
+- gemini_snippets: ["텍스트 조각 1", ...]  (best effort, 없어도 무방)
+- chatgpt_last_used: "YYYY-MM-DD" 또는 null
 - status: "ok" / "error" / "empty"
 
 **에러 처리:**
-- 파일이 없으면: AI_CONTEXT = {status: "empty"}. 브리핑 조립 시 `🤖 AI 컨텍스트\n- (메모리 파일 없음)` 출력
-- 파일 읽기 실패 시: AI_CONTEXT = {status: "error"}. 브리핑 조립 시 `⚠️ AI 컨텍스트 수집 실패` 출력
+- 각 소스 독립적으로 실패 허용. 실패한 소스는 해당 항목에 `⚠️ [소스명] 수집 실패` 표기.
+- 모든 소스 실패 시: `🤖 AI 컨텍스트\n⚠️ 전체 수집 실패` 출력.
+- Claude MEMORY.md 없으면: `(메모리 파일 없음)` 으로 기록.
 
 성공 시 포맷:
 
+```
 🤖 AI 컨텍스트
+
+**[Claude Code / CLI]**
+메모리:
 - 요약 항목 1
 - 요약 항목 2
+
+지난 24시간 (N개 명령어):
+- 활동 1
+- 활동 2
+
+**[Gemini CLI]** 최근 프로젝트:
+- 프로젝트명 (MM/DD)
+
+**[ChatGPT]** 최근 사용: YYYY-MM-DD
+```
 
 ---
 
@@ -556,7 +659,21 @@ NOTION_TASKS.status가 "empty"이면: `🟢 LOW — 할 일 없음`
 ---
 
 ## 🤖 AI 컨텍스트
-{요약 항목을 bullet로}
+
+**[Claude Code / CLI]**
+{claude_memory 항목을 bullet로}
+
+지난 24시간 ({claude_history.count}개 명령어):
+{claude_history.items를 bullet로}
+
+**[Gemini CLI]** 최근 프로젝트:
+{gemini_projects를 bullet로. 없으면 "(최근 사용 없음)"}
+
+{gemini_snippets가 있으면:}
+최근 작업 컨텍스트:
+{gemini_snippets를 bullet로}
+
+**[ChatGPT]** 최근 사용: {chatgpt_last_used 또는 "미확인"}
 
 ---
 
