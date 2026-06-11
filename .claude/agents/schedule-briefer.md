@@ -709,7 +709,10 @@ for i, chunk in enumerate(chunks):
     req = urllib.request.Request(
         webhook,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "DiscordBot (schedule-briefer, 1.0)",
+        },
         method="POST"
     )
     try:
