@@ -102,9 +102,14 @@ bash .agents/scripts/start-dev-loop.sh "로그인 기능 구현"
 1. PM       → 태스크 분석 → artifacts/issue.md (수용 기준, 범위 밖 항목)
 2. Engineer → 스펙 읽고 구현 → artifacts/impl.md (코드, 테스트, 커밋 목록)
 3. Reviewer → 구현 리뷰 → artifacts/review.md
-              ├── APPROVED → 완료
+              ├── APPROVED → Step 4
               └── REJECTED → Engineer 재작업 (최대 3회)
+4. QA       → 테스트 케이스·엣지 케이스 검증 → artifacts/test-plan.md
+              ├── PASSED  → 완료
+              └── FAILED  → Engineer 재작업 → Reviewer 재실행 → QA 재검증 (최대 2회)
 ```
+
+중단된 작업은 동일한 태스크로 재실행하면 마지막 완료 스텝부터 자동 재개됩니다 (`artifacts/state.md` 기반).
 
 #### 산출물
 
@@ -115,6 +120,8 @@ bash .agents/scripts/start-dev-loop.sh "로그인 기능 구현"
 | `issue.md` | PM | 이슈 제목, 배경, 수용 기준, 범위 밖 항목 |
 | `impl.md` | Engineer | 테스트 모드, 변경 파일, 커밋 목록, 핵심 코드 |
 | `review.md` | Reviewer | 스펙 커버리지, 항목별 피드백, 최종 판정 |
+| `test-plan.md` | QA | 테스트 케이스, 엣지 케이스, 이슈 목록, 최종 판정 |
+| `state.md` | Orchestrator | 현재 진행 스텝, 타임스탬프, 상태 (재개 지원용) |
 
 > `artifacts/`는 `.gitignore`에 자동 등록됩니다.
 

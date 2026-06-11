@@ -1,6 +1,6 @@
 #!/bin/bash
 # 멀티 에이전트 개발 루프 오케스트레이터
-# PM → Engineer → Reviewer (반려 시 Engineer 재작업 최대 3회)
+# PM → Engineer → Reviewer → QA (반려/실패 시 재작업, state.md 기반 재개 지원)
 set -euo pipefail
 
 TASK="${1:-}"
@@ -8,8 +8,10 @@ SESSION="dev-loop"
 REPO_ROOT="$(pwd)"
 ARTIFACTS=".agents/artifacts"
 AGENTS_MD=".agents/agents.md"
+MAX_REVIEW_RETRY=3
+MAX_QA_RETRY=2
 
-if [ -z "$TASK" ]; then
+if [[ -z "$TASK" ]]; then
   echo "사용법: bash .agents/scripts/orchestrator.sh \"<기능 설명>\""
   exit 1
 fi
@@ -18,8 +20,6 @@ fi
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
-# agents.md 에서 특정 에이전트 섹션 추출
-# $1 = 에이전트 태그 (예: "@pm", "@engineer")
 extract_persona() {
   local tag="$1"
   awk -v t="$tag" '
@@ -29,15 +29,11 @@ extract_persona() {
   ' "$AGENTS_MD"
 }
 
-# 에이전트 실행: 해당 pane에서 claude -p 호출, 완료 시 done_marker 생성
-# $1=pane번호  $2=레이블  $3=프롬프트파일  $4=출력파일  $5=완료마커
 run_agent() {
   local pane="$1" label="$2" prompt_file="$3" output_file="$4" done_marker="$5"
-
   rm -f "$done_marker" "$output_file"
 
-  local step_script="/tmp/agent-step-${pane}.sh"
-  cat > "$step_script" << SCRIPT
+  cat > "/tmp/agent-step-${pane}.sh" << SCRIPT
 #!/bin/bash
 set -euo pipefail
 cd '$REPO_ROOT'
@@ -50,36 +46,196 @@ echo "--- ${label} 완료 ---"
 touch '$done_marker'
 SCRIPT
 
-  tmux send-keys -t "$SESSION:0.$pane" "bash '$step_script'" Enter
+  tmux send-keys -t "$SESSION:0.$pane" "bash /tmp/agent-step-${pane}.sh" Enter
 
-  # 완료 대기 (최대 10분)
   local waited=0
-  while [ ! -f "$done_marker" ]; do
+  while [[ ! -f "$done_marker" ]]; do
     sleep 2
     waited=$((waited + 2))
-    if [ $waited -ge 600 ]; then
+    if [[ $waited -ge 600 ]]; then
       log "타임아웃: ${label} 10분 초과"
       exit 1
     fi
   done
 }
 
-# ── 초기화 ──────────────────────────────────────────────────────────────────
+save_state() {
+  local step="$1" next_action="$2" status="${3:-in_progress}"
+  cat > "$ARTIFACTS/state.md" << EOF
+## Workflow State
+- workflow: dev-loop
+- feature: ${TASK}
+- current_step: ${step}
+- last_completed: Step ${step} ($(date '+%Y-%m-%d %H:%M'))
+- next_action: ${next_action}
+- status: ${status}
+EOF
+}
+
+# ── 에이전트 실행 함수 ───────────────────────────────────────────────────────
+# 전역 변수: ENG_PERSONA, REVIEW_PERSONA, QA_PERSONA, REVIEW_FEEDBACK, review_retry
+
+run_engineer() {
+  local label="Engineer"
+  local feedback_section=""
+
+  if [[ -n "$REVIEW_FEEDBACK" ]]; then
+    label="Engineer (수정 ${review_retry}회)"
+    feedback_section="다음 피드백을 반영해서 구현을 수정해주세요:
+
+${REVIEW_FEEDBACK}
+
+"
+  fi
+
+  cat > /tmp/engineer-prompt.txt << EOF
+당신은 다음 역할을 맡은 AI 에이전트입니다:
+
+${ENG_PERSONA}
+
+---
+
+${feedback_section}스펙:
+$(cat "$ARTIFACTS/issue.md")
+
+구현 결과를 다음 형식으로 출력해주세요:
+
+## 구현 완료: <기능명>
+
+**테스트 모드**: <TDD / Test-after / No-test>
+
+**변경 파일**
+- <파일명> — <변경 내용>
+
+**커밋 목록**
+1. \`<type>(<scope>): <설명>\`
+
+**구현 코드 요약**
+\`\`\`<언어>
+<핵심 코드>
+\`\`\`
+
+**수용 기준 커버리지**: <N>/<전체>
+EOF
+
+  run_agent 1 "$label" "/tmp/engineer-prompt.txt" \
+    "$ARTIFACTS/impl.md" "$ARTIFACTS/.eng-done"
+}
+
+run_reviewer() {
+  cat > /tmp/reviewer-prompt.txt << EOF
+당신은 다음 역할을 맡은 AI 에이전트입니다:
+
+${REVIEW_PERSONA}
+
+---
+
+스펙:
+$(cat "$ARTIFACTS/issue.md")
+
+구현:
+$(cat "$ARTIFACTS/impl.md")
+
+위 구현을 리뷰해주세요. 다음 형식으로 출력해주세요:
+
+## 리뷰: <기능명>
+
+**스펙 커버리지**: <N>/<전체> 수용 기준 충족
+
+**피드백**
+- ✅ <잘된 점>
+- ⚠️ <개선 권장>
+- ❌ <반드시 수정 필요>
+
+**결론**
+<종합 의견>
+
+마지막 줄은 반드시 다음 중 하나만 적어주세요 (다른 텍스트 없이):
+REVIEW: APPROVED
+REVIEW: REJECTED
+EOF
+
+  run_agent 2 "Reviewer" "/tmp/reviewer-prompt.txt" \
+    "$ARTIFACTS/review.md" "$ARTIFACTS/.review-done"
+}
+
+# Engineer → Reviewer 루프 (review_retry, REVIEW_FEEDBACK 공유)
+# $1=true 이면 첫 Engineer 실행 생략 (재개 시 Reviewer부터)
+engineer_reviewer_loop() {
+  local skip_first_engineer="${1:-false}"
+
+  if [[ "$skip_first_engineer" != "true" ]]; then
+    log "[2/4] Engineer → 구현"
+    run_engineer
+    save_state 2 "Reviewer 리뷰 대기"
+    log "[2/4] ✓ 구현 완료 → $ARTIFACTS/impl.md"
+    echo ""
+  fi
+
+  while [[ $review_retry -lt $MAX_REVIEW_RETRY ]]; do
+    log "[3/4] Reviewer → 리뷰 (시도 $((review_retry + 1))/$MAX_REVIEW_RETRY)"
+    run_reviewer
+
+    if grep -q "REVIEW: APPROVED" "$ARTIFACTS/review.md"; then
+      save_state 3 "QA 검증 대기"
+      log "[3/4] ✓ 리뷰 승인"
+      echo ""
+      return 0
+    fi
+
+    review_retry=$((review_retry + 1))
+    if [[ $review_retry -ge $MAX_REVIEW_RETRY ]]; then
+      log "❌ 리뷰 ${MAX_REVIEW_RETRY}회 반려. 수동 개입 필요."
+      log "   피드백: $ARTIFACTS/review.md"
+      save_state 2 "수동 개입 필요 — 리뷰 ${MAX_REVIEW_RETRY}회 반려" "blocked"
+      exit 1
+    fi
+
+    log "[3/4] ✗ 반려 ($review_retry/$MAX_REVIEW_RETRY) → Engineer 재작업"
+    REVIEW_FEEDBACK=$(cat "$ARTIFACTS/review.md")
+    rm -f "$ARTIFACTS/.eng-done" "$ARTIFACTS/.review-done"
+    run_engineer
+    save_state 2 "Reviewer 리뷰 대기"
+    echo ""
+  done
+}
+
+# ── 초기화 + 재개 확인 ─────────────────────────────────────────────────────
 
 mkdir -p "$ARTIFACTS"
-rm -f "$ARTIFACTS"/.pm-done "$ARTIFACTS"/.eng-done "$ARTIFACTS"/.review-done
+START_STEP=1
+
+if [[ -f "$ARTIFACTS/state.md" ]]; then
+  saved_task=$(grep "^- feature:" "$ARTIFACTS/state.md" | sed 's/^- feature: //')
+  saved_status=$(grep "^- status:" "$ARTIFACTS/state.md" | awk '{print $NF}')
+  saved_step=$(grep "^- current_step:" "$ARTIFACTS/state.md" | awk '{print $NF}')
+
+  if [[ "$saved_status" == "in_progress" && "$saved_task" == "$TASK" ]]; then
+    START_STEP=$((saved_step + 1))
+    log "이전 작업 재개: Step ${saved_step} 완료 → Step ${START_STEP}부터 시작"
+  elif [[ "$saved_status" == "blocked" && "$saved_task" == "$TASK" ]]; then
+    # blocked 상태에서 재실행 시 마지막 완료 스텝부터 재시도
+    START_STEP=$saved_step
+    log "blocked 상태 재시도: Step ${START_STEP}부터"
+    save_state "$START_STEP" "재시도 중"
+  else
+    log "새 작업 시작 (이전 상태 초기화)"
+    rm -f "$ARTIFACTS"/*.md "$ARTIFACTS"/.*.done 2>/dev/null || true
+  fi
+else
+  rm -f "$ARTIFACTS"/.*.done 2>/dev/null || true
+fi
 
 log "🚀 태스크: $TASK"
-log "에이전트 개발 루프 시작"
 echo ""
 
 # ── Step 1: PM 스펙 작성 ─────────────────────────────────────────────────────
 
-log "[1/3] PM → 스펙 작성"
+if [[ $START_STEP -le 1 ]]; then
+  log "[1/4] PM → 스펙 작성"
+  PM_PERSONA=$(extract_persona "@pm")
 
-PM_PERSONA=$(extract_persona "@pm")
-
-cat > /tmp/pm-prompt.txt << EOF
+  cat > /tmp/pm-prompt.txt << EOF
 당신은 다음 역할을 맡은 AI 에이전트입니다:
 
 ${PM_PERSONA}
@@ -105,140 +261,126 @@ ${PM_PERSONA}
 - <포함하지 않을 것들>
 EOF
 
-run_agent 0 "PM" "/tmp/pm-prompt.txt" "$ARTIFACTS/issue.md" "$ARTIFACTS/.pm-done"
-log "[1/3] ✓ 스펙 완료 → $ARTIFACTS/issue.md"
-echo ""
+  run_agent 0 "PM" "/tmp/pm-prompt.txt" "$ARTIFACTS/issue.md" "$ARTIFACTS/.pm-done"
+  save_state 1 "Engineer 구현 대기"
+  log "[1/4] ✓ 스펙 완료 → $ARTIFACTS/issue.md"
+  echo ""
+else
+  log "[1/4] ✓ PM 스펙 재개 (skip) → $ARTIFACTS/issue.md"
+fi
 
-# ── Step 2: Engineer 구현 ────────────────────────────────────────────────────
+# ── Steps 2-3: Engineer + Reviewer 루프 ──────────────────────────────────────
 
 ENG_PERSONA=$(extract_persona "@engineer")
-REVIEW_FEEDBACK=""
-RETRY=0
-
-run_engineer() {
-  local spec
-  spec=$(cat "$ARTIFACTS/issue.md")
-
-  local prompt_intro
-  if [ -z "$REVIEW_FEEDBACK" ]; then
-    prompt_intro="다음 스펙을 구현해주세요:"
-  else
-    prompt_intro="리뷰 피드백을 반영해서 구현을 수정해주세요.\n\n이전 리뷰 피드백:\n${REVIEW_FEEDBACK}\n\n스펙:"
-  fi
-
-  cat > /tmp/engineer-prompt.txt << EOF
-당신은 다음 역할을 맡은 AI 에이전트입니다:
-
-${ENG_PERSONA}
-
----
-
-${prompt_intro}
-
-${spec}
-
-구현 결과를 다음 형식으로 출력해주세요:
-
-## 구현 완료: <기능명>
-
-**테스트 모드**: <TDD / Test-after / No-test>
-
-**변경 파일**
-- <파일명> — <변경 내용>
-
-**커밋 목록**
-1. \`<type>(<scope>): <설명>\`
-
-**구현 코드 요약**
-\`\`\`<언어>
-<핵심 코드>
-\`\`\`
-
-**수용 기준 커버리지**: <N>/<전체>
-EOF
-
-  run_agent 1 "Engineer${REVIEW_FEEDBACK:+ (수정 $RETRY회)}" \
-    "/tmp/engineer-prompt.txt" "$ARTIFACTS/impl.md" "$ARTIFACTS/.eng-done"
-}
-
-log "[2/3] Engineer → 구현"
-run_engineer
-log "[2/3] ✓ 구현 완료 → $ARTIFACTS/impl.md"
-echo ""
-
-# ── Step 3: Reviewer + 반려 루프 ─────────────────────────────────────────────
-
 REVIEW_PERSONA=$(extract_persona "@reviewer")
-MAX_RETRY=3
+REVIEW_FEEDBACK=""
+review_retry=0
 
-while [ $RETRY -lt $MAX_RETRY ]; do
-  log "[3/3] Reviewer → 리뷰 (시도 $((RETRY+1))/$MAX_RETRY)"
+if [[ $START_STEP -le 2 ]]; then
+  engineer_reviewer_loop "false"
+elif [[ $START_STEP -le 3 ]]; then
+  log "[2/4] ✓ Engineer 재개 (skip)"
+  engineer_reviewer_loop "true"   # Reviewer부터 재개
+else
+  log "[2/4] ✓ Engineer 재개 (skip)"
+  log "[3/4] ✓ Reviewer 재개 (skip)"
+  echo ""
+fi
 
-  local_spec=$(cat "$ARTIFACTS/issue.md")
-  local_impl=$(cat "$ARTIFACTS/impl.md")
+# ── Step 4: QA 검증 ──────────────────────────────────────────────────────────
 
-  cat > /tmp/reviewer-prompt.txt << EOF
+QA_PERSONA=$(extract_persona "@qa")
+qa_retry=0
+
+if [[ $START_STEP -le 4 ]]; then
+  # Reviewer pane(2)을 QA로 재사용
+  tmux send-keys -t "$SESSION:0.2" \
+    "printf '\n\033[36m┌─────────────────┐\n│  🔷  QA          │\n└─────────────────┘\033[0m\n'" Enter
+
+  while [[ $qa_retry -le $MAX_QA_RETRY ]]; do
+    log "[4/4] QA → 검증 (시도 $((qa_retry + 1)))"
+
+    local_qa_prev=""
+    if [[ $qa_retry -gt 0 && -f "$ARTIFACTS/test-plan.md" ]]; then
+      local_qa_prev="이전 QA 결과:
+$(cat "$ARTIFACTS/test-plan.md")
+
+"
+    fi
+
+    cat > /tmp/qa-prompt.txt << EOF
 당신은 다음 역할을 맡은 AI 에이전트입니다:
 
-${REVIEW_PERSONA}
+${QA_PERSONA}
 
 ---
 
-스펙:
-${local_spec}
+${local_qa_prev}스펙:
+$(cat "$ARTIFACTS/issue.md")
 
 구현:
-${local_impl}
+$(cat "$ARTIFACTS/impl.md")
 
-위 구현을 리뷰해주세요. 다음 형식으로 출력해주세요:
+리뷰:
+$(cat "$ARTIFACTS/review.md")
 
-## 리뷰: <기능명>
+QA 검증을 수행해주세요. 다음 형식으로 출력해주세요:
 
-**스펙 커버리지**: <N>/<전체> 수용 기준 충족
+## QA 검증: <기능명>
 
-**피드백**
-- ✅ <잘된 점>
-- ⚠️ <개선 권장>
-- ❌ <반드시 수정 필요>
+**테스트 케이스**
+- [ ] <케이스 1> — <기대 결과>
+- [ ] <케이스 2> — <기대 결과>
 
-**결론**
-<종합 의견>
+**엣지 케이스**
+- <발견한 엣지 케이스>
+
+**이슈 목록**
+- <발견된 이슈, 없으면 "없음">
 
 마지막 줄은 반드시 다음 중 하나만 적어주세요 (다른 텍스트 없이):
-REVIEW: APPROVED
-REVIEW: REJECTED
+QA: PASSED
+QA: FAILED
 EOF
 
-  run_agent 2 "Reviewer" "/tmp/reviewer-prompt.txt" \
-    "$ARTIFACTS/review.md" "$ARTIFACTS/.review-done"
+    run_agent 2 "QA" "/tmp/qa-prompt.txt" \
+      "$ARTIFACTS/test-plan.md" "$ARTIFACTS/.qa-done"
 
-  if grep -q "REVIEW: APPROVED" "$ARTIFACTS/review.md"; then
-    log "[3/3] ✓ 리뷰 승인"
-    break
-  else
-    RETRY=$((RETRY + 1))
-    if [ $RETRY -ge $MAX_RETRY ]; then
-      log "❌ 리뷰 ${MAX_RETRY}회 반려. 수동 개입 필요."
-      log "   피드백: $ARTIFACTS/review.md"
+    if grep -q "QA: PASSED" "$ARTIFACTS/test-plan.md"; then
+      save_state 4 "완료" "done"
+      log "[4/4] ✓ QA 통과"
+      break
+    fi
+
+    qa_retry=$((qa_retry + 1))
+    if [[ $qa_retry -gt $MAX_QA_RETRY ]]; then
+      log "❌ QA ${MAX_QA_RETRY}회 실패. 수동 개입 필요."
+      log "   결과: $ARTIFACTS/test-plan.md"
+      save_state 3 "수동 개입 필요 — QA ${MAX_QA_RETRY}회 실패" "blocked"
       exit 1
     fi
 
-    log "[3/3] ✗ 반려 (${RETRY}/${MAX_RETRY}) → Engineer 재작업"
-    REVIEW_FEEDBACK=$(cat "$ARTIFACTS/review.md")
-    rm -f "$ARTIFACTS/.eng-done"
-    run_engineer
-    log "[2/3] ✓ 재작업 완료 → $ARTIFACTS/impl.md"
-    rm -f "$ARTIFACTS/.review-done"
-  fi
-done
+    log "[4/4] ✗ QA 실패 ($qa_retry/$MAX_QA_RETRY) → Engineer 재작업 후 리뷰 재실행"
+    REVIEW_FEEDBACK="QA 실패 피드백:
+$(cat "$ARTIFACTS/test-plan.md")"
+    review_retry=0
+    rm -f "$ARTIFACTS/.eng-done" "$ARTIFACTS/.review-done" "$ARTIFACTS/.qa-done"
 
-# ── 완료 ────────────────────────────────────────────────────────────────────
+    engineer_reviewer_loop "false"
+  done
+else
+  log "[4/4] ✓ QA 재개 (skip)"
+fi
+
+# ── 완료 ─────────────────────────────────────────────────────────────────────
 
 echo ""
 log "🎉 개발 루프 완료!"
 echo ""
-echo "  📋 스펙     : $ARTIFACTS/issue.md"
-echo "  💻 구현     : $ARTIFACTS/impl.md"
-echo "  ✅ 리뷰     : $ARTIFACTS/review.md"
+echo "  📋 스펙       : $ARTIFACTS/issue.md"
+echo "  💻 구현       : $ARTIFACTS/impl.md"
+echo "  ✅ 리뷰       : $ARTIFACTS/review.md"
+echo "  🔷 QA 결과    : $ARTIFACTS/test-plan.md"
+echo "  📊 상태       : $ARTIFACTS/state.md"
 echo ""
 echo "  다음 단계: /pr-review 또는 직접 PR 생성"
