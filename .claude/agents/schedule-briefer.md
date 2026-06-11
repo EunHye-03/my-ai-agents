@@ -1,6 +1,6 @@
 ---
 name: schedule-briefer
-description: 하루 브리핑을 생성하는 에이전트. "브리핑해줘", "오늘 브리핑", "브리핑" 등으로 트리거. args에 --slack 포함 시 Slack DM으로 전송, 없으면 터미널 출력.
+description: 하루 브리핑을 생성하는 에이전트. "브리핑해줘", "오늘 브리핑", "브리핑" 등으로 트리거. args에 --discord 포함 시 Discord #briefing 채널로 전송, 없으면 터미널 출력.
 ---
 
 # schedule-briefer
@@ -23,7 +23,7 @@ CONFIG_FILE="${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}"
 - 각 소스는 독립적으로 수집한다. 하나 실패해도 나머지는 계속 진행한다.
 - 소스 수집 실패 시 해당 섹션에 `⚠️ [소스명] 데이터 수집 실패` 를 출력한다.
 - 모든 섹션 수집 완료 후 브리핑을 조립해 출력한다.
-- args에 `--slack` 이 포함되면 Slack DM으로 전송, 없으면 터미널에 출력한다.
+- args에 `--discord` 이 포함되면 Discord #briefing 채널로 전송, 없으면 터미널에 출력한다.
 
 ## 1단계: 날짜 확인
 
@@ -683,11 +683,49 @@ NOTION_TASKS.status가 "empty"이면: `🟢 LOW — 할 일 없음`
 
 ### 출력 라우팅
 
-args에 `--slack`이 포함되어 있으면:
-- `slack_send_message` 툴로 `${SLACK_BRIEFING_CHANNEL}` 채널에 전송
-- 전송 후 응답의 `ok` 필드를 확인한다
-  - `ok: true` → 터미널에 "✅ Slack ${SLACK_BRIEFING_CHANNEL} 채널 전송 완료" 출력
-  - `ok: false` 또는 오류 → "⚠️ Slack 전송 실패 — 브리핑을 터미널에 출력합니다" 출력 후 브리핑을 터미널에 출력
+args에 `--discord`이 포함되어 있으면:
 
-args에 `--slack`이 없으면:
+**1. Keychain에서 웹훅 URL 읽기:**
+
+```bash
+DISCORD_WEBHOOK=$(security find-generic-password -a "$USER" -s "discord-briefing-webhook" -w 2>/dev/null)
+```
+
+읽기 실패 시: "⚠️ Discord 웹훅 URL을 Keychain에서 찾을 수 없습니다 (키: discord-briefing-webhook)" 출력 후 터미널에 브리핑 출력.
+
+**2. 브리핑을 2000자 단위로 청크 분할 후 순서대로 전송:**
+
+```bash
+# 브리핑 텍스트를 BRIEFING 변수에 저장한 뒤 청크 전송
+python3 - << 'EOF'
+import sys, os, json, urllib.request
+
+briefing = os.environ.get("BRIEFING", "")
+webhook = os.environ.get("DISCORD_WEBHOOK", "")
+chunks = [briefing[i:i+2000] for i in range(0, len(briefing), 2000)]
+
+for i, chunk in enumerate(chunks):
+    payload = json.dumps({"content": chunk}).encode()
+    req = urllib.request.Request(
+        webhook,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            if resp.status not in (200, 204):
+                print(f"chunk {i+1} 전송 실패: HTTP {resp.status}", file=sys.stderr)
+    except Exception as e:
+        print(f"chunk {i+1} 전송 오류: {e}", file=sys.stderr)
+        sys.exit(1)
+
+print(f"✅ Discord #briefing 채널 전송 완료 ({len(chunks)}개 메시지)")
+EOF
+```
+
+- 전송 성공 → "✅ Discord #briefing 채널 전송 완료 (N개 메시지)" 출력
+- 전송 실패 → "⚠️ Discord 전송 실패 — 브리핑을 터미널에 출력합니다" 출력 후 브리핑을 터미널에 출력
+
+args에 `--discord`이 없으면:
 - 브리핑을 터미널에 직접 출력한다
