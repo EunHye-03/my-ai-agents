@@ -37,72 +37,82 @@ date '+%Y-%m-%d (%a)'
 
 ## 2단계: Apple Calendar 수집
 
-Calendar 앱을 먼저 실행한 뒤 AppleScript로 오늘/내일 일정을 가져온다.
-중복 제거: 동일한 summary는 한 번만 출력 (Gmail 캘린더와 로컬 캘린더 중복 방지).
+Calendar 앱을 먼저 실행한 뒤 AppleScript로 오늘~6일 후(7일치) 일정을 가져온다.
+중복 제거: 동일한 (날짜, 제목) 조합은 한 번만 출력 (Gmail 캘린더와 로컬 캘린더 중복 방지).
 
 ```bash
 open -a Calendar && sleep 2
 osascript << 'APPLESCRIPT'
 tell application "Calendar"
-    -- startOfDay를 초 단위 덧셈으로 계산해 AppleScript date 참조 버그 회피
-    set startOfDay to current date
-    set hours of startOfDay to 0
-    set minutes of startOfDay to 0
-    set seconds of startOfDay to 0
-    set endOfDay to startOfDay + (23 * 3600 + 59 * 60 + 59)
-    set startOfTomorrow to startOfDay + (24 * 3600)
-    set endOfTomorrow to startOfTomorrow + (23 * 3600 + 59 * 60 + 59)
+    -- startOfToday를 초 단위 덧셈으로 계산해 AppleScript date 참조 버그 회피
+    set startOfToday to current date
+    set hours of startOfToday to 0
+    set minutes of startOfToday to 0
+    set seconds of startOfToday to 0
 
     set skipCals to {"생일", "대한민국의 휴일", "Holidays in South Korea", "대한민국 공휴일", "Siri 제안", "예정된 미리 알림"}
     set seen to {}
     set output to ""
 
-    repeat with cal in calendars
-        set calName to name of cal
-        set skip to false
-        repeat with sc in skipCals
-            if calName is sc then set skip to true
-        end repeat
-        if not skip then
-            try
-                set todayEvents to (every event of cal whose start date >= startOfDay and start date <= endOfDay)
-                repeat with ev in todayEvents
-                    set evTitle to summary of ev
-                    if evTitle is not in seen then
-                        set end of seen to evTitle
-                        set evStart to start date of ev
-                        set hh to hours of evStart
-                        set mm to minutes of evStart
-                        if hh = 0 and mm = 0 then
-                            set output to output & "[오늘] 종일  " & evTitle & "
-"
-                        else
-                            set output to output & "[오늘] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & "  " & evTitle & "
-"
-                        end if
-                    end if
-                end repeat
-                set tomorrowEvents to (every event of cal whose start date >= startOfTomorrow and start date <= endOfTomorrow)
-                repeat with ev in tomorrowEvents
-                    set evTitle to summary of ev
-                    set key to "tomorrow:" & evTitle
-                    if key is not in seen then
-                        set end of seen to key
-                        set evStart to start date of ev
-                        set hh to hours of evStart
-                        set mm to minutes of evStart
-                        if hh = 0 and mm = 0 then
-                            set output to output & "[내일] 종일  " & evTitle & "
-"
-                        else
-                            set output to output & "[내일] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & "  " & evTitle & "
-"
-                        end if
-                    end if
-                end repeat
-            end try
+    repeat with dayOffset from 0 to 6
+        set dayStart to startOfToday + (dayOffset * 24 * 3600)
+        set dayEnd to dayStart + (23 * 3600 + 59 * 60 + 59)
+
+        -- 날짜 레이블 결정
+        if dayOffset = 0 then
+            set dayLabel to "오늘"
+        else if dayOffset = 1 then
+            set dayLabel to "내일"
+        else
+            set wd to weekday of dayStart
+            if wd = Monday then
+                set dayLabel to "월"
+            else if wd = Tuesday then
+                set dayLabel to "화"
+            else if wd = Wednesday then
+                set dayLabel to "수"
+            else if wd = Thursday then
+                set dayLabel to "목"
+            else if wd = Friday then
+                set dayLabel to "금"
+            else if wd = Saturday then
+                set dayLabel to "토"
+            else
+                set dayLabel to "일"
+            end if
         end if
+
+        repeat with cal in calendars
+            set calName to name of cal
+            set skip to false
+            repeat with sc in skipCals
+                if calName is sc then set skip to true
+            end repeat
+            if not skip then
+                try
+                    set dayEvents to (every event of cal whose start date >= dayStart and start date <= dayEnd)
+                    repeat with ev in dayEvents
+                        set evTitle to summary of ev
+                        set dedupKey to (dayOffset as string) & ":" & evTitle
+                        if dedupKey is not in seen then
+                            set end of seen to dedupKey
+                            set evStart to start date of ev
+                            set hh to hours of evStart
+                            set mm to minutes of evStart
+                            if hh = 0 and mm = 0 then
+                                set output to output & "[" & dayLabel & "] 종일  " & evTitle & "
+"
+                            else
+                                set output to output & "[" & dayLabel & "] " & (hh as string) & ":" & text -2 thru -1 of ("0" & (mm as string)) & "  " & evTitle & "
+"
+                            end if
+                        end if
+                    end repeat
+                end try
+            end if
+        end repeat
     end repeat
+
     if output is "" then return "(일정 없음)"
     return output
 end tell
@@ -112,7 +122,7 @@ APPLESCRIPT
 - 출력이 `(일정 없음)` 이면: `📅 일정\n_일정 없음_` 으로 기록
 - 종일 이벤트(HH:MM = 00:00)는 시간 대신 "종일"로 표시
 - osascript 실패 시: `📅 일정\n⚠️ Calendar 접근 실패` 로 기록
-- 성공 시 `[오늘] HH:MM 일정명` / `[내일] HH:MM 일정명` 형식으로 포맷
+- 성공 시 `[오늘]`/`[내일]`/`[월~일]` 레이블 + `HH:MM 일정명` 형식으로 포맷 (7일치)
 
 ---
 
