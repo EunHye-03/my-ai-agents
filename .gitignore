@@ -1,0 +1,11 @@
+# Secrets and local configuration
+.env
+.env.*
+local-values.env
+config.local.*
+
+# Local artifacts and backups
+*.backup
+*.bak
+artifacts/
+private-docs/

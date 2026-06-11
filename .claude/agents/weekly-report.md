@@ -9,9 +9,17 @@ description: 연구실 주간보고서를 작성할 때 사용. "주간보고서
 
 **Announce at start:** "weekly-report 에이전트로 주간보고서를 작성하겠습니다."
 
-## Notion 설정
+## Local Configuration
 
-- 주간보고서 상위 페이지 ID: `320d19d2-ce3f-80e0-8633-d0efa5beed9f`
+`${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}`에서 설정을 읽는다. 파일이 없거나 필요한 값이 비어 있으면 저장 전에 사용자에게 확인한다.
+
+```bash
+CONFIG_FILE="${AGENT_RULES_CONFIG:-$HOME/.config/agent-rules/local-values.env}"
+[ -f "$CONFIG_FILE" ] && set -a && . "$CONFIG_FILE" && set +a
+```
+
+- 주간보고서 상위 페이지 ID: `${NOTION_WEEKLY_REPORT_PAGE_ID}`
+- 로컬 저장 경로: `${WEEKLY_REPORT_DIR}`
 - 각 주차 보고서는 이 페이지의 하위 페이지로 생성
 
 ## Steps
@@ -52,20 +60,20 @@ description: 연구실 주간보고서를 작성할 때 사용. "주간보고서
 
 #### A. 로컬 마크다운 저장
 
-경로: `~/Data/KNU/KNU VI/주간보고서/MMDD_주간보고서.md`
+경로: `${WEEKLY_REPORT_DIR}/MMDD_주간보고서.md`
 - MMDD: 오늘 날짜 (예: 0604)
 - 같은 날짜 파일이 이미 있으면 사용자에게 덮어쓸지 확인
 
 #### B. Notion 하위 페이지 생성
 
-상위 페이지(`320d19d2-ce3f-80e0-8633-d0efa5beed9f`) 아래에 새 페이지 생성.
+상위 페이지(`${NOTION_WEEKLY_REPORT_PAGE_ID}`) 아래에 새 페이지 생성.
 - 제목: `MMDD 주간보고서`
 - 내용: 확정된 보고서 전문을 그대로 입력
 
 #### C. 완료 보고
 
 ```
-✅ 로컬 저장: ~/Data/KNU/KNU VI/주간보고서/MMDD_주간보고서.md
+✅ 로컬 저장: ${WEEKLY_REPORT_DIR}/MMDD_주간보고서.md
 ✅ Notion 페이지 생성: MMDD 주간보고서
 
 PDF 내보내기 (수동):
