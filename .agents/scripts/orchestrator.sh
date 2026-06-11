@@ -33,23 +33,32 @@ run_agent() {
   local pane="$1" label="$2" prompt_file="$3" output_file="$4" done_marker="$5"
   rm -f "$done_marker" "$output_file"
 
+  local error_marker="${done_marker}.error"
+  rm -f "$error_marker"
+
   cat > "/tmp/agent-step-${pane}.sh" << SCRIPT
 #!/bin/bash
-set -euo pipefail
-cd '$REPO_ROOT'
+cd '${REPO_ROOT}' || { echo "[ERROR] cd 실패: ${REPO_ROOT}"; exit 1; }
 echo ""
 echo "--- ${label} 시작 ---"
 echo ""
-claude -p "\$(cat '$prompt_file')" | tee '$output_file'
-echo ""
-echo "--- ${label} 완료 ---"
-touch '$done_marker'
+claude -p "\$(cat '${prompt_file}')" | tee '${output_file}'
+_exit=\${PIPESTATUS[0]}
+if [[ \$_exit -eq 0 ]]; then
+  echo ""
+  echo "--- ${label} 완료 ---"
+  touch '${done_marker}'
+else
+  echo ""
+  echo "[ERROR] ${label} 실패 (claude exit: \$_exit)"
+  touch '${error_marker}'
+fi
 SCRIPT
 
   tmux send-keys -t "$SESSION:0.$pane" "bash /tmp/agent-step-${pane}.sh" Enter
 
   local waited=0
-  while [[ ! -f "$done_marker" ]]; do
+  while [[ ! -f "$done_marker" && ! -f "$error_marker" ]]; do
     sleep 2
     waited=$((waited + 2))
     if [[ $waited -ge 600 ]]; then
@@ -57,19 +66,18 @@ SCRIPT
       exit 1
     fi
   done
+
+  if [[ -f "$error_marker" ]]; then
+    log "[ERROR] ${label} 실패 — pane $pane 출력 확인 필요"
+    exit 1
+  fi
 }
 
 save_state() {
   local step="$1" next_action="$2" status="${3:-in_progress}"
-  cat > "$ARTIFACTS/state.md" << EOF
-## Workflow State
-- workflow: dev-loop
-- feature: ${TASK}
-- current_step: ${step}
-- last_completed: Step ${step} ($(date '+%Y-%m-%d %H:%M'))
-- next_action: ${next_action}
-- status: ${status}
-EOF
+  printf '## Workflow State\n- workflow: dev-loop\n- feature: %s\n- current_step: %s\n- last_completed: Step %s (%s)\n- next_action: %s\n- status: %s\n' \
+    "${TASK}" "${step}" "${step}" "$(date '+%Y-%m-%d %H:%M')" "${next_action}" "${status}" \
+    > "$ARTIFACTS/state.md"
 }
 
 # ── 에이전트 실행 함수 ───────────────────────────────────────────────────────
@@ -81,23 +89,18 @@ run_engineer() {
 
   if [[ -n "$REVIEW_FEEDBACK" ]]; then
     label="Engineer (수정 ${review_retry}회)"
-    feedback_section="다음 피드백을 반영해서 구현을 수정해주세요:
-
-${REVIEW_FEEDBACK}
-
-"
+    feedback_section="${REVIEW_FEEDBACK}"
   fi
 
-  cat > /tmp/engineer-prompt.txt << EOF
-당신은 다음 역할을 맡은 AI 에이전트입니다:
-
-${ENG_PERSONA}
-
----
-
-${feedback_section}스펙:
-$(cat "$ARTIFACTS/issue.md")
-
+  {
+    printf '%s\n\n%s\n\n---\n\n' '당신은 다음 역할을 맡은 AI 에이전트입니다:' "${ENG_PERSONA}"
+    if [[ -n "${feedback_section}" ]]; then
+      printf '다음 피드백을 반영해서 구현을 수정해주세요:\n\n%s\n\n' "${feedback_section}"
+    fi
+    printf '스펙:\n'
+    cat "$ARTIFACTS/issue.md"
+    printf '\n'
+    cat << '__OUTPUT_FMT__'
 구현 결과를 다음 형식으로 출력해주세요:
 
 ## 구현 완료: <기능명>
@@ -108,34 +111,30 @@ $(cat "$ARTIFACTS/issue.md")
 - <파일명> — <변경 내용>
 
 **커밋 목록**
-1. \`<type>(<scope>): <설명>\`
+1. `<type>(<scope>): <설명>`
 
 **구현 코드 요약**
-\`\`\`<언어>
+```<언어>
 <핵심 코드>
-\`\`\`
+```
 
 **수용 기준 커버리지**: <N>/<전체>
-EOF
+__OUTPUT_FMT__
+  } > /tmp/engineer-prompt.txt
 
   run_agent 1 "$label" "/tmp/engineer-prompt.txt" \
     "$ARTIFACTS/impl.md" "$ARTIFACTS/.eng-done"
 }
 
 run_reviewer() {
-  cat > /tmp/reviewer-prompt.txt << EOF
-당신은 다음 역할을 맡은 AI 에이전트입니다:
-
-${REVIEW_PERSONA}
-
----
-
-스펙:
-$(cat "$ARTIFACTS/issue.md")
-
-구현:
-$(cat "$ARTIFACTS/impl.md")
-
+  {
+    printf '%s\n\n%s\n\n---\n\n' '당신은 다음 역할을 맡은 AI 에이전트입니다:' "${REVIEW_PERSONA}"
+    printf '스펙:\n'
+    cat "$ARTIFACTS/issue.md"
+    printf '\n구현:\n'
+    cat "$ARTIFACTS/impl.md"
+    printf '\n'
+    cat << '__OUTPUT_FMT__'
 위 구현을 리뷰해주세요. 다음 형식으로 출력해주세요:
 
 ## 리뷰: <기능명>
@@ -153,7 +152,8 @@ $(cat "$ARTIFACTS/impl.md")
 마지막 줄은 반드시 다음 중 하나만 적어주세요 (다른 텍스트 없이):
 REVIEW: APPROVED
 REVIEW: REJECTED
-EOF
+__OUTPUT_FMT__
+  } > /tmp/reviewer-prompt.txt
 
   run_agent 2 "Reviewer" "/tmp/reviewer-prompt.txt" \
     "$ARTIFACTS/review.md" "$ARTIFACTS/.review-done"
@@ -235,15 +235,10 @@ if [[ $START_STEP -le 1 ]]; then
   log "[1/4] PM → 스펙 작성"
   PM_PERSONA=$(extract_persona "@pm")
 
-  cat > /tmp/pm-prompt.txt << EOF
-당신은 다음 역할을 맡은 AI 에이전트입니다:
-
-${PM_PERSONA}
-
----
-
-태스크: ${TASK}
-
+  {
+    printf '%s\n\n%s\n\n---\n\n' '당신은 다음 역할을 맡은 AI 에이전트입니다:' "${PM_PERSONA}"
+    printf '태스크: %s\n\n' "${TASK}"
+    cat << '__OUTPUT_FMT__'
 위 태스크에 대해 PM 역할에 따라 스펙을 작성해주세요.
 다음 형식을 따라주세요:
 
@@ -259,7 +254,8 @@ ${PM_PERSONA}
 
 **범위 밖**
 - <포함하지 않을 것들>
-EOF
+__OUTPUT_FMT__
+  } > /tmp/pm-prompt.txt
 
   run_agent 0 "PM" "/tmp/pm-prompt.txt" "$ARTIFACTS/issue.md" "$ARTIFACTS/.pm-done"
   save_state 1 "Engineer 구현 대기"
@@ -300,30 +296,21 @@ if [[ $START_STEP -le 4 ]]; then
   while [[ $qa_retry -le $MAX_QA_RETRY ]]; do
     log "[4/4] QA → 검증 (시도 $((qa_retry + 1)))"
 
-    local_qa_prev=""
-    if [[ $qa_retry -gt 0 && -f "$ARTIFACTS/test-plan.md" ]]; then
-      local_qa_prev="이전 QA 결과:
-$(cat "$ARTIFACTS/test-plan.md")
-
-"
-    fi
-
-    cat > /tmp/qa-prompt.txt << EOF
-당신은 다음 역할을 맡은 AI 에이전트입니다:
-
-${QA_PERSONA}
-
----
-
-${local_qa_prev}스펙:
-$(cat "$ARTIFACTS/issue.md")
-
-구현:
-$(cat "$ARTIFACTS/impl.md")
-
-리뷰:
-$(cat "$ARTIFACTS/review.md")
-
+    {
+      printf '%s\n\n%s\n\n---\n\n' '당신은 다음 역할을 맡은 AI 에이전트입니다:' "${QA_PERSONA}"
+      if [[ $qa_retry -gt 0 && -f "$ARTIFACTS/test-plan.md" ]]; then
+        printf '이전 QA 결과:\n'
+        cat "$ARTIFACTS/test-plan.md"
+        printf '\n\n'
+      fi
+      printf '스펙:\n'
+      cat "$ARTIFACTS/issue.md"
+      printf '\n구현:\n'
+      cat "$ARTIFACTS/impl.md"
+      printf '\n리뷰:\n'
+      cat "$ARTIFACTS/review.md"
+      printf '\n'
+      cat << '__OUTPUT_FMT__'
 QA 검증을 수행해주세요. 다음 형식으로 출력해주세요:
 
 ## QA 검증: <기능명>
@@ -341,7 +328,8 @@ QA 검증을 수행해주세요. 다음 형식으로 출력해주세요:
 마지막 줄은 반드시 다음 중 하나만 적어주세요 (다른 텍스트 없이):
 QA: PASSED
 QA: FAILED
-EOF
+__OUTPUT_FMT__
+    } > /tmp/qa-prompt.txt
 
     run_agent 2 "QA" "/tmp/qa-prompt.txt" \
       "$ARTIFACTS/test-plan.md" "$ARTIFACTS/.qa-done"
