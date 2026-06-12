@@ -291,7 +291,7 @@ qa_retry=0
 if [[ $START_STEP -le 4 ]]; then
   # Reviewer pane(2)을 QA로 재사용
   tmux send-keys -t "$SESSION:0.2" \
-    "printf '\n\033[36m┌─────────────────┐\n│  🔷  QA          │\n└─────────────────┘\033[0m\n'" Enter
+    "printf '\n\033[36m┌───────────────────┐\n│  🔷  QA           │\n└───────────────────┘\033[0m\n'" Enter
 
   while [[ $qa_retry -le $MAX_QA_RETRY ]]; do
     log "[4/4] QA → 검증 (시도 $((qa_retry + 1)))"

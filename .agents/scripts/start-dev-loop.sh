@@ -42,10 +42,10 @@ for p in 0 1 2 3; do
 done
 
 # 역할 표시
-tmux send-keys -t "$SESSION:0.0" "clear && printf '\033[34m┌─────────────────┐\n│  🔵  PM          │\n└─────────────────┘\033[0m\n대기 중...\n'" Enter
-tmux send-keys -t "$SESSION:0.1" "clear && printf '\033[33m┌─────────────────┐\n│  🟡  Engineer    │\n└─────────────────┘\033[0m\n대기 중...\n'" Enter
-tmux send-keys -t "$SESSION:0.2" "clear && printf '\033[32m┌─────────────────┐\n│  🟢  Reviewer    │\n└─────────────────┘\033[0m\n대기 중...\n'" Enter
-tmux send-keys -t "$SESSION:0.3" "clear && printf '\033[35m┌─────────────────┐\n│  ⚙️   Orchestrator│\n└─────────────────┘\033[0m\n'" Enter
+tmux send-keys -t "$SESSION:0.0" "clear && printf '\033[34m┌───────────────────┐\n│  🔵  PM           │\n└───────────────────┘\033[0m\n대기 중...\n'" Enter
+tmux send-keys -t "$SESSION:0.1" "clear && printf '\033[33m┌───────────────────┐\n│  🟡  Engineer     │\n└───────────────────┘\033[0m\n대기 중...\n'" Enter
+tmux send-keys -t "$SESSION:0.2" "clear && printf '\033[32m┌───────────────────┐\n│  🟢  Reviewer     │\n└───────────────────┘\033[0m\n대기 중...\n'" Enter
+tmux send-keys -t "$SESSION:0.3" "clear && printf '\033[35m┌───────────────────┐\n│  ⚙️   Orchestrator│\n└───────────────────┘\033[0m\n'" Enter
 
 # orchestrator 실행
 tmux send-keys -t "$SESSION:0.3" "bash .agents/scripts/orchestrator.sh '$TASK'" Enter
