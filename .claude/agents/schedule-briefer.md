@@ -37,11 +37,10 @@ date '+%Y-%m-%d (%a)'
 
 ## 2단계: Apple Calendar 수집
 
-Calendar 앱을 먼저 실행한 뒤 AppleScript로 오늘~6일 후(7일치) 일정을 가져온다.
+AppleScript로 오늘~6일 후(7일치) 일정을 가져온다. Calendar 앱을 직접 열지 않아도 동작한다.
 중복 제거: 동일한 (날짜, 제목) 조합은 한 번만 출력 (Gmail 캘린더와 로컬 캘린더 중복 방지).
 
 ```bash
-open -a Calendar && sleep 2
 osascript << 'APPLESCRIPT'
 tell application "Calendar"
     -- startOfToday를 초 단위 덧셈으로 계산해 AppleScript date 참조 버그 회피
