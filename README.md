@@ -125,14 +125,42 @@ bash .agents/scripts/start-dev-loop.sh "로그인 기능 구현"
 
 > `artifacts/`는 `.gitignore`에 자동 등록됩니다.
 
-#### tmux 단축키
+#### tmux 조작
+
+**pane 이동 및 뷰**
 
 | 키 | 동작 |
 |----|------|
 | `Ctrl-b` + 화살표 | pane 이동 |
-| `Ctrl-b` + `z` | 현재 pane 전체화면 전환 |
+| `Ctrl-b` + `z` | 현재 pane 전체화면 전환 (다시 누르면 복귀) |
+| `Ctrl-b` + `[` | 스크롤 모드 — PgUp/PgDn으로 이전 출력 확인, `q`로 종료 |
 | `Ctrl-b` + `d` | 세션 detach (백그라운드 유지) |
 | `tmux attach -t dev-loop` | detach 후 재접속 |
+
+**실행 중 개입**
+
+각 pane은 독립된 셸이라 이동 후 직접 타이핑할 수 있습니다.
+
+| 상황 | 방법 |
+|------|------|
+| 에이전트 출력 자세히 보기 | 해당 pane으로 이동 → `Ctrl-b z` 확대 |
+| 실행 중인 에이전트 중단 | 해당 pane으로 이동 → `Ctrl-c` |
+| 프롬프트 수정 후 단계 재실행 | `/tmp/<role>-prompt.txt` 편집 후 해당 pane에서 `bash /tmp/agent-step-N.sh` |
+
+**blocked 상태 수동 재개**
+
+Orchestrator가 `❌ 수동 개입 필요`를 출력하면:
+
+```bash
+# 1. 실패 원인 확인
+cat .agents/artifacts/review.md      # 리뷰 반려 내용
+cat .agents/artifacts/test-plan.md   # QA 실패 내용
+
+# 2. 필요하면 코드 직접 수정
+
+# 3. 동일 태스크명으로 재실행 → state.md 읽어 마지막 완료 스텝부터 재개
+bash .agents/scripts/start-dev-loop.sh "같은 기능명"
+```
 
 ---
 
