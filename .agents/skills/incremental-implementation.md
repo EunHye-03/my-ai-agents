@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/incremental-implementation/SKILL.md
+/Users/User/.skills/skills/incremental-implementation/SKILL.md

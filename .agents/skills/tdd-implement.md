@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/test-driven-development/SKILL.md
+/Users/User/.skills/skills/test-driven-development/SKILL.md

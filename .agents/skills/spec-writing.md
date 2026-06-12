@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/spec-driven-development/SKILL.md
+/Users/User/.skills/skills/spec-driven-development/SKILL.md

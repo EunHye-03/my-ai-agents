@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/pre-mortem/SKILL.md
+/Users/User/.skills/skills/pre-mortem/SKILL.md

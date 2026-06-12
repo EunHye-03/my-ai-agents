@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/api-and-interface-design/SKILL.md
+/Users/User/.skills/skills/api-and-interface-design/SKILL.md

@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/doubt-driven-development/SKILL.md
+/Users/User/.skills/skills/doubt-driven-development/SKILL.md

@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/code-review-and-quality/SKILL.md
+/Users/User/.skills/skills/code-review-and-quality/SKILL.md

@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/adversarial-reviewer/SKILL.md
+/Users/User/.skills/skills/adversarial-reviewer/SKILL.md

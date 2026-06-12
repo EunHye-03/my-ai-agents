@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/shipping-and-launch/SKILL.md
+/Users/User/.skills/skills/shipping-and-launch/SKILL.md

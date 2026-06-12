@@ -1,1 +1,1 @@
-/Users/User/.agents/skills/code-simplification/SKILL.md
+/Users/User/.skills/skills/code-simplification/SKILL.md
