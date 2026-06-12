@@ -3,6 +3,8 @@
 # PM → Engineer → Reviewer → QA (반려/실패 시 재작업, state.md 기반 재개 지원)
 set -euo pipefail
 
+source "$(dirname "$0")/../lib/prereq.sh"
+
 TASK="${1:-}"
 SESSION="dev-loop"
 REPO_ROOT="$(pwd)"
@@ -273,9 +275,11 @@ REVIEW_FEEDBACK=""
 review_retry=0
 
 if [[ $START_STEP -le 2 ]]; then
+  check_prerequisite "$ARTIFACTS/issue.md" "Engineer(Step 2)" "PM(Step 1)"
   engineer_reviewer_loop "false"
 elif [[ $START_STEP -le 3 ]]; then
   log "[2/4] ✓ Engineer 재개 (skip)"
+  check_prerequisite "$ARTIFACTS/impl.md" "Reviewer(Step 3)" "Engineer(Step 2)"
   engineer_reviewer_loop "true"   # Reviewer부터 재개
 else
   log "[2/4] ✓ Engineer 재개 (skip)"
@@ -289,6 +293,7 @@ QA_PERSONA=$(extract_persona "@qa")
 qa_retry=0
 
 if [[ $START_STEP -le 4 ]]; then
+  check_prerequisite "$ARTIFACTS/review.md" "QA(Step 4)" "Reviewer(Step 3)"
   # Reviewer pane(2)을 QA로 재사용
   tmux send-keys -t "$SESSION:0.2" \
     "printf '\n\033[36m┌───────────────────┐\n│  🔷  QA           │\n└───────────────────┘\033[0m\n'" Enter
