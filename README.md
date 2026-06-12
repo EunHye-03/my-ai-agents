@@ -136,6 +136,74 @@ bash .agents/scripts/start-dev-loop.sh "로그인 기능 구현"
 
 ---
 
+### 동작 원리
+
+멀티 터미널 루프는 세 가지 메커니즘의 조합으로 작동합니다.
+
+#### 1. tmux pane = 에이전트 터미널
+
+`start-dev-loop.sh`가 tmux 세션을 만들고 4분할합니다. 각 pane은 독립적인 셸이고, Orchestrator가 다른 pane에 명령을 원격 전송합니다.
+
+```
+pane 0 → PM
+pane 1 → Engineer
+pane 2 → Reviewer / QA  ← QA 단계에서 Reviewer pane 재사용
+pane 3 → Orchestrator   ← orchestrator.sh 실행 위치
+```
+
+`tmux send-keys -t dev-loop:0.1 "bash /tmp/agent-step-1.sh" Enter`
+— Orchestrator가 Engineer pane에 스크립트 실행을 주입하는 방식입니다.
+
+#### 2. claude -p = 비대화형 단발 호출
+
+각 에이전트는 `claude -p "<프롬프트>"`로 실행됩니다. 대화 없이 즉시 응답을 stdout으로 반환하는 모드입니다.
+
+```bash
+# agent-step-N.sh 내부 구조
+claude -p "$(cat /tmp/engineer-prompt.txt)" | tee .agents/artifacts/impl.md
+_exit=${PIPESTATUS[0]}   # 파이프라인에서 claude의 exit code만 추출
+```
+
+`PIPESTATUS[0]`을 쓰는 이유: `| tee`가 항상 0을 반환하므로, claude 자체의 성공/실패를 알려면 파이프라인 앞쪽 exit code를 따로 캡처해야 합니다.
+
+#### 3. 마커 파일 폴링 = 에이전트 간 동기화
+
+에이전트끼리 직접 통신하지 않습니다. Orchestrator가 완료 여부를 파일로 감지합니다.
+
+```
+에이전트 성공 → touch .agents/artifacts/.eng-done
+에이전트 실패 → touch .agents/artifacts/.eng-done.error
+
+Orchestrator: while [[ ! -f .done && ! -f .error ]]; do sleep 2; done
+```
+
+타임아웃은 10분. 실패 마커가 생기면 해당 pane 출력을 직접 확인해야 합니다.
+
+#### 4. 프롬프트 조립
+
+각 에이전트의 프롬프트는 세 부분을 합쳐 `/tmp/<role>-prompt.txt`에 씁니다:
+
+```
+[페르소나]     agents.md에서 @tag 섹션을 awk로 추출
+    +
+[이전 산출물]  cat artifacts/issue.md, impl.md, review.md ...
+    +
+[출력 형식]    마크다운 템플릿 + 마지막 줄 판정문 강제
+```
+
+판정문(`REVIEW: APPROVED / REJECTED`, `QA: PASSED / FAILED`)은 `grep -q`로 감지합니다. 이 한 줄이 루프의 분기 조건입니다.
+
+#### 5. 재개 흐름 (state.md)
+
+```
+state.md 없음       → 처음부터 실행
+status=in_progress  → saved_step + 1 부터 재개
+status=blocked      → saved_step 부터 재시도 (수동 개입 후 재실행)
+status=done         → 새 태스크로 초기화
+```
+
+---
+
 ### Claude Code 세션에서 슬래시 커맨드
 
 `.agents/`가 초기화된 프로젝트에서 Claude Code를 열면 사용 가능:
